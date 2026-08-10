@@ -322,7 +322,10 @@ defmodule WxMVU.GLCanvas.Server do
       max_vertex_attribs: 16,
       max_uniform_locations: 1024,
       max_renderbuffer_size: 16384,
-      max_viewport_dims: {16384, 16384}
+      max_viewport_dims: {16384, 16384},
+      max_uniform_block_size: 16384,
+      max_uniform_buffer_bindings: 36,
+      uniform_buffer_offset_alignment: 256
     }
   end
 
@@ -333,9 +336,17 @@ defmodule WxMVU.GLCanvas.Server do
       max_texture_size: get_integer(OpenGL.gl_MAX_TEXTURE_SIZE()),
       max_texture_units: get_integer(OpenGL.gl_MAX_TEXTURE_IMAGE_UNITS()),
       max_vertex_attribs: get_integer(OpenGL.gl_MAX_VERTEX_ATTRIBS()),
+      # GL_MAX_UNIFORM_LOCATIONS is GL 4.3+. macOS caps at 4.1, so this query
+      # fails there and reports 0. Kept for platforms that do support it.
       max_uniform_locations: get_integer(OpenGL.gl_MAX_UNIFORM_LOCATIONS()),
       max_renderbuffer_size: get_integer(OpenGL.gl_MAX_RENDERBUFFER_SIZE()),
-      max_viewport_dims: get_integer_pair(OpenGL.gl_MAX_VIEWPORT_DIMS())
+      max_viewport_dims: get_integer_pair(OpenGL.gl_MAX_VIEWPORT_DIMS()),
+      # Uniform buffer limits. The offset alignment constrains where a
+      # bind_buffer_range sub-range may start, and is commonly 256.
+      max_uniform_block_size: get_integer(OpenGL.gl_MAX_UNIFORM_BLOCK_SIZE()),
+      max_uniform_buffer_bindings: get_integer(OpenGL.gl_MAX_UNIFORM_BUFFER_BINDINGS()),
+      uniform_buffer_offset_alignment:
+        get_integer(OpenGL.gl_UNIFORM_BUFFER_OFFSET_ALIGNMENT())
     }
   rescue
     _ -> default_capabilities()
