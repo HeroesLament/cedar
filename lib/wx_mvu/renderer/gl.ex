@@ -86,8 +86,18 @@ defmodule WxMVU.Renderer.GL do
     end
   end
 
+  # Return shape of getShaderiv/getProgramiv differs across OTP wx builds:
+  # wx-2.5.2 (OTP 28.1.x) returns [value], wx-2.5.4+/2.6 (OTP 28.5, 29)
+  # returns the bare integer. Accept both.
+  defp scalar([v | _]), do: v
+  defp scalar(v) when is_integer(v), do: v
+
+  # gen* single-object allocation: same cross-version tolerance.
+  defp one([v]), do: v
+  defp one(v) when is_integer(v), do: v
+
   defp get_shader_iv(shader, pname) do
-    :gl.getShaderiv(shader, pname) |> hd()
+    :gl.getShaderiv(shader, pname) |> scalar()
   end
 
   defp get_shader_info_log(shader) do
@@ -117,7 +127,7 @@ defmodule WxMVU.Renderer.GL do
   end
 
   defp get_program_iv(program, pname) do
-    :gl.getProgramiv(program, pname) |> hd()
+    :gl.getProgramiv(program, pname) |> scalar()
   end
 
   defp get_program_info_log(program) do
@@ -135,6 +145,20 @@ defmodule WxMVU.Renderer.GL do
 
   def get_uniform_location(program, name) do
     :gl.getUniformLocation(program, String.to_charlist(name))
+  end
+
+  # Raising variant. A missing uniform returns -1, which every uniform_* call
+  # then silently ignores, producing a black screen rather than an error.
+  def get_uniform_location!(program, name) do
+    case get_uniform_location(program, name) do
+      -1 ->
+        raise ArgumentError,
+              "uniform #{inspect(name)} not found in program #{inspect(program)} " <>
+                "(it may be unused and therefore optimised out by the driver)"
+
+      location ->
+        location
+    end
   end
 
   def get_attrib_location(program, name) do
@@ -160,8 +184,7 @@ defmodule WxMVU.Renderer.GL do
   # ============================================================================
 
   def create_buffer do
-    [buf] = :gl.genBuffers(1)
-    buf
+    one(:gl.genBuffers(1))
   end
 
   def create_buffers(n) do
@@ -169,15 +192,16 @@ defmodule WxMVU.Renderer.GL do
   end
 
   def delete_buffer(buf) do
-    :gl.deleteBuffers(1, [buf])
+    :gl.deleteBuffers([buf])
   end
 
   def delete_buffers(bufs) when is_list(bufs) do
-    :gl.deleteBuffers(length(bufs), bufs)
+    :gl.deleteBuffers(bufs)
   end
 
   def bind_buffer(:array, buf), do: :gl.bindBuffer(OpenGL.gl_ARRAY_BUFFER(), buf)
   def bind_buffer(:element, buf), do: :gl.bindBuffer(OpenGL.gl_ELEMENT_ARRAY_BUFFER(), buf)
+  def bind_buffer(:uniform, buf), do: :gl.bindBuffer(OpenGL.gl_UNIFORM_BUFFER(), buf)
 
   def buffer_data(:array, data, usage) do
     :gl.bufferData(OpenGL.gl_ARRAY_BUFFER(), byte_size(data), data, usage_hint(usage))
@@ -185,6 +209,10 @@ defmodule WxMVU.Renderer.GL do
 
   def buffer_data(:element, data, usage) do
     :gl.bufferData(OpenGL.gl_ELEMENT_ARRAY_BUFFER(), byte_size(data), data, usage_hint(usage))
+  end
+
+  def buffer_data(:uniform, data, usage) do
+    :gl.bufferData(OpenGL.gl_UNIFORM_BUFFER(), byte_size(data), data, usage_hint(usage))
   end
 
   def buffer_sub_data(:array, offset, data) do
@@ -195,21 +223,74 @@ defmodule WxMVU.Renderer.GL do
     :gl.bufferSubData(OpenGL.gl_ELEMENT_ARRAY_BUFFER(), offset, byte_size(data), data)
   end
 
+  def buffer_sub_data(:uniform, offset, data) do
+    :gl.bufferSubData(OpenGL.gl_UNIFORM_BUFFER(), offset, byte_size(data), data)
+  end
+
   defp usage_hint(:static), do: OpenGL.gl_STATIC_DRAW()
   defp usage_hint(:dynamic), do: OpenGL.gl_DYNAMIC_DRAW()
   defp usage_hint(:stream), do: OpenGL.gl_STREAM_DRAW()
+
+  # ============================================================================
+  # Uniform Buffer Objects
+  # ============================================================================
+  #
+  # GLSL 410 has no `layout(binding = N)` for uniform blocks - that qualifier
+  # arrived in GL 4.2 via ARB_shading_language_420pack. On the 4.1 cap the
+  # block/binding association must therefore be made at runtime, here.
+
+  def bind_buffer_base(:uniform, binding, buf) do
+    :gl.bindBufferBase(OpenGL.gl_UNIFORM_BUFFER(), binding, buf)
+  end
+
+  # Binds a sub-range of a buffer. `offset` must be a multiple of
+  # GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT (see GLCanvas.Server capabilities).
+  # This is the retained-mode path: one large UBO, one range per object.
+  def bind_buffer_range(:uniform, binding, buf, offset, size) do
+    :gl.bindBufferRange(OpenGL.gl_UNIFORM_BUFFER(), binding, buf, offset, size)
+  end
+
+  def get_uniform_block_index(program, name) do
+    invalid = OpenGL.gl_INVALID_INDEX()
+
+    case :gl.getUniformBlockIndex(program, String.to_charlist(name)) do
+      ^invalid -> {:error, :not_found}
+      index -> {:ok, index}
+    end
+  end
+
+  def get_uniform_block_index!(program, name) do
+    case get_uniform_block_index(program, name) do
+      {:ok, index} ->
+        index
+
+      {:error, :not_found} ->
+        raise ArgumentError,
+              "uniform block #{inspect(name)} not found in program #{inspect(program)}"
+    end
+  end
+
+  def uniform_block_binding(program, block_index, binding) do
+    :gl.uniformBlockBinding(program, block_index, binding)
+  end
+
+  # The driver's own std140 size for a block. Comparing this against a
+  # host-computed size is what makes hand-written packing safe.
+  def get_active_uniform_block_data_size(program, block_index) do
+    :gl.getActiveUniformBlockiv(program, block_index, OpenGL.gl_UNIFORM_BLOCK_DATA_SIZE(), 1)
+    |> scalar()
+  end
 
   # ============================================================================
   # Vertex Arrays
   # ============================================================================
 
   def create_vertex_array do
-    [vao] = :gl.genVertexArrays(1)
-    vao
+    one(:gl.genVertexArrays(1))
   end
 
   def delete_vertex_array(vao) do
-    :gl.deleteVertexArrays(1, [vao])
+    :gl.deleteVertexArrays([vao])
   end
 
   def bind_vertex_array(vao) do
@@ -251,12 +332,11 @@ defmodule WxMVU.Renderer.GL do
   # ============================================================================
 
   def create_texture do
-    [tex] = :gl.genTextures(1)
-    tex
+    one(:gl.genTextures(1))
   end
 
   def delete_texture(tex) do
-    :gl.deleteTextures(1, [tex])
+    :gl.deleteTextures([tex])
   end
 
   def bind_texture(:texture_2d, tex) do
@@ -395,12 +475,11 @@ defmodule WxMVU.Renderer.GL do
   # ============================================================================
 
   def create_framebuffer do
-    [fbo] = :gl.genFramebuffers(1)
-    fbo
+    one(:gl.genFramebuffers(1))
   end
 
   def delete_framebuffer(fbo) do
-    :gl.deleteFramebuffers(1, [fbo])
+    :gl.deleteFramebuffers([fbo])
   end
 
   def bind_framebuffer(:draw, fbo) do
@@ -460,12 +539,11 @@ defmodule WxMVU.Renderer.GL do
   # ============================================================================
 
   def create_renderbuffer do
-    [rbo] = :gl.genRenderbuffers(1)
-    rbo
+    one(:gl.genRenderbuffers(1))
   end
 
   def delete_renderbuffer(rbo) do
-    :gl.deleteRenderbuffers(1, [rbo])
+    :gl.deleteRenderbuffers([rbo])
   end
 
   def bind_renderbuffer(rbo) do
