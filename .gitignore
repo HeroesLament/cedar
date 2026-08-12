@@ -22,3 +22,8 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 wx_mvu-*.tar
 
+
+# rust-gpu shader build artifacts (generated GLSL in priv/shaders IS committed)
+shaders/out/
+shaders/target/
+shaders/Cargo.lock
