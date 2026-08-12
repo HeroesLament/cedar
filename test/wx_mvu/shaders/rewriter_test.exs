@@ -172,6 +172,86 @@ defmodule WxMVU.Shaders.RewriterTest do
     end
   end
 
+  # A vertex stage that references the block itself. naga names the block per
+  # stage, so this file's block and instance differ from the fragment's even
+  # though they are the same block in the same program.
+  @vert_with_uniforms """
+  #version 410 core
+  struct type_4 {
+      vec4 member;
+      vec2 member_1;
+      float member_2;
+  };
+  struct type_5 {
+      type_4 member;
+  };
+  layout(std140) uniform type_5_block_0Vertex { type_5 _group_0_binding_0_vs; };
+  void main() {
+      vec4 c = _group_0_binding_0_vs.member.member;
+      float w = _group_0_binding_0_vs.member.member_2;
+  }
+  """
+
+  @frag_with_uniforms """
+  #version 410 core
+  struct type_4 {
+      vec4 member;
+      vec2 member_1;
+      float member_2;
+  };
+  struct type_5 {
+      type_4 member;
+  };
+  layout(std140) uniform type_5_block_0Fragment { type_5 _group_0_binding_0_fs; };
+  void main() {
+      vec4 c = _group_0_binding_0_fs.member.member;
+  }
+  """
+
+  @line_spec %{
+    block: %{name: "LineUniforms", fields: [:color, :viewport, :line_width]},
+    samplers: %{}
+  }
+
+  describe "rewrite_pair/3 with a block referenced from both stages" do
+    setup do
+      {:ok, out, _mapping} =
+        Rewriter.rewrite_pair(@vert_with_uniforms, @frag_with_uniforms, @line_spec)
+
+      out
+    end
+
+    test "renames the block in the vertex stage too", %{vert: vert} do
+      assert vert =~ "uniform LineUniforms { LineUniformsBlock u; }"
+      refute vert =~ "type_5_block_0Vertex"
+      refute vert =~ "_group_0_binding_0_vs"
+    end
+
+    test "both stages name the block identically, so they link as one", %{
+      vert: vert,
+      frag: frag
+    } do
+      extract = fn glsl ->
+        [name] =
+          Regex.run(~r/uniform\s+(\w+)\s*\{/, glsl, capture: :all_but_first)
+
+        name
+      end
+
+      assert extract.(vert) == extract.(frag)
+      assert extract.(vert) == "LineUniforms"
+    end
+
+    test "renames field accesses in the vertex stage", %{vert: vert} do
+      assert vert =~ "u.data.color"
+      assert vert =~ "u.data.line_width"
+    end
+
+    test "handles an empty sampler map", %{frag: frag} do
+      refute frag =~ "sampler"
+    end
+  end
+
   describe "rewrite_pair/3" do
     test "derives from the fragment stage and applies to both" do
       assert {:ok, %{vert: vert, frag: frag}, mapping} =

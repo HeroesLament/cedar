@@ -64,6 +64,17 @@
         1 => "u_data",
         3 => "u_colormap"
       }
+    },
+    %{
+      name: "line",
+      crate: "line",
+      entry_points: [vert: "main_vs", frag: "main_fs"],
+      block: %{
+        name: "LineUniforms",
+        fields: [:color, :viewport, :line_width]
+      },
+      # No samplers. The line visual is pure geometry.
+      samplers: %{}
     }
   ]
 }

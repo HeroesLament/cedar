@@ -87,6 +87,65 @@ fn floor_f32(x: f32) -> f32 {
     }
 }
 
+/// Normalizes a 2D vector, returning `(0.0, 0.0)` for a zero-length input.
+///
+/// Scalar in and out rather than `glam::Vec2` so this crate stays
+/// dependency-free — see the module docs. The shader crates reassemble vectors
+/// on the other side.
+///
+/// Degenerate input is reachable: a polyline with a repeated point produces a
+/// zero-length segment, and normalizing it would otherwise yield `NaN` and
+/// smear the whole primitive across the viewport.
+#[inline]
+pub fn normalize2(x: f32, y: f32) -> (f32, f32) {
+    let length_squared = x * x + y * y;
+
+    if length_squared <= 0.0 {
+        (0.0, 0.0)
+    } else {
+        let inverse = 1.0 / sqrt_f32(length_squared);
+        (x * inverse, y * inverse)
+    }
+}
+
+/// The left-hand perpendicular of a 2D direction, normalized.
+///
+/// This is the line-expansion primitive: a polyline is drawn as quads offset
+/// along the perpendicular of each segment, because `glLineWidth` above 1.0 is
+/// unreliable to unsupported in an OpenGL 4.1 core profile.
+#[inline]
+pub fn perpendicular2(x: f32, y: f32) -> (f32, f32) {
+    let (nx, ny) = normalize2(x, y);
+    (-ny, nx)
+}
+
+/// `sqrt` without `std`.
+///
+/// Newton-Raphson from a scaled initial guess. On the GPU this lowers to the
+/// hardware instruction; this path only runs in host tests.
+#[inline]
+fn sqrt_f32(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+
+    let mut guess = x;
+    let mut i = 0;
+
+    while i < 20 {
+        let next = 0.5 * (guess + x / guess);
+
+        if next == guess {
+            break;
+        }
+
+        guess = next;
+        i += 1;
+    }
+
+    guess
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,6 +197,38 @@ mod tests {
         assert_eq!((-0.25f32).fract(), -0.25);
         assert_eq!(wrap_unit(-0.25), 0.75);
         assert_eq!(wrap_unit(-1.25), 0.75);
+    }
+
+    #[test]
+    fn normalize2_produces_unit_length() {
+        let (x, y) = normalize2(3.0, 4.0);
+        assert!((x - 0.6).abs() < 1.0e-5, "x = {x}");
+        assert!((y - 0.8).abs() < 1.0e-5, "y = {y}");
+    }
+
+    #[test]
+    fn normalize2_survives_a_zero_length_segment() {
+        // A polyline with a repeated point. Must not be NaN.
+        let (x, y) = normalize2(0.0, 0.0);
+        assert_eq!((x, y), (0.0, 0.0));
+        assert!(x.is_finite() && y.is_finite());
+    }
+
+    #[test]
+    fn perpendicular2_is_orthogonal_and_unit() {
+        let (px, py) = perpendicular2(1.0, 0.0);
+        assert!((px - 0.0).abs() < 1.0e-5);
+        assert!((py - 1.0).abs() < 1.0e-5);
+
+        // Orthogonality: the dot product with the input direction is zero.
+        let (dx, dy) = normalize2(2.0, -5.0);
+        let (qx, qy) = perpendicular2(2.0, -5.0);
+        assert!((dx * qx + dy * qy).abs() < 1.0e-5);
+    }
+
+    #[test]
+    fn perpendicular2_survives_degenerate_input() {
+        assert_eq!(perpendicular2(0.0, 0.0), (0.0, 0.0));
     }
 
     #[test]
