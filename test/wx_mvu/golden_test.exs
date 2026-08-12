@@ -20,12 +20,7 @@ defmodule WxMVU.GoldenTest do
   per test process.
   """
 
-  use ExUnit.Case, async: false
-
-  alias WxMVU.GLCanvas.Draw.Program
-  alias WxMVU.Renderer.GL
-
-  @moduletag :gl
+  use WxMVU.GLCase
 
   # ==========================================================================
   # Shader declarations
@@ -102,125 +97,13 @@ defmodule WxMVU.GoldenTest do
   end
 
   # ==========================================================================
-  # Context
-  # ==========================================================================
-
-  setup_all do
-    _wx = :wx.new()
-    frame = :wxFrame.new(:wx.null(), -1, ~c"wx_mvu golden tests", size: {160, 120})
-
-    # An explicit core-profile request. Without it macOS hands back a legacy
-    # 2.1 context in which none of these shaders will even compile.
-    attribs = [
-      1,
-      4,
-      11,
-      24,
-      12,
-      8,
-      :wxe_util.get_const(:wx_GL_CORE_PROFILE),
-      :wxe_util.get_const(:wx_GL_MAJOR_VERSION),
-      4,
-      :wxe_util.get_const(:wx_GL_MINOR_VERSION),
-      1,
-      0
-    ]
-
-    canvas = :wxGLCanvas.new(frame, attribList: attribs)
-    context = :wxGLContext.new(canvas)
-    :wxFrame.show(frame)
-
-    # No explicit teardown. wx tears the frame and context down with the
-    # process that created them, and ExUnit runs on_exit callbacks after the
-    # wx server has already gone - an explicit destroy there fails with
-    # {:wx, :unknown_env}, or with a dead gen_server if it tries to re-register.
-    %{env: :wx.get_env(), canvas: canvas, context: context}
-  end
-
-  setup %{env: env, canvas: canvas, context: context} do
-    # ExUnit runs each test in its own process, and a GL context is bound to
-    # whichever process made it current - so this cannot live in setup_all.
-    :wx.set_env(env)
-    true = :wxGLCanvas.setCurrent(canvas, context)
-    :ok
-  end
-
-  # ==========================================================================
-  # Helpers
-  # ==========================================================================
-
-  defp offscreen(size) do
-    target = GL.create_texture()
-    GL.bind_texture(:texture_2d, target)
-
-    GL.tex_image_2d(
-      size,
-      size,
-      :rgba8,
-      :rgba,
-      :unsigned_byte,
-      :binary.copy(<<0>>, size * size * 4)
-    )
-
-    GL.tex_parameter(:min_filter, :nearest)
-    GL.tex_parameter(:mag_filter, :nearest)
-
-    fbo = GL.create_framebuffer()
-    GL.bind_framebuffer(:both, fbo)
-    GL.framebuffer_texture_2d(:color, 0, target)
-
-    assert GL.check_framebuffer_status() == :complete
-
-    {fbo, target}
-  end
-
-  defp floats(values), do: for(v <- values, into: <<>>, do: <<v * 1.0::float-32-native>>)
-
-  defp quad_vertices do
-    floats([
-      -1.0, -1.0, 0.0, 0.0,
-      1.0, -1.0, 1.0, 0.0,
-      -1.0, 1.0, 0.0, 1.0,
-      1.0, 1.0, 1.0, 1.0
-    ])
-  end
-
-  defp buffer(data) do
-    vao = GL.create_vertex_array()
-    vbo = GL.create_buffer()
-    GL.bind_vertex_array(vao)
-    GL.bind_buffer(:array, vbo)
-    GL.buffer_data(:array, data, :static)
-    {vao, vbo}
-  end
-
-  defp red_channel(size) do
-    pixels = GL.read_pixels(0, 0, size, size, :rgba, :unsigned_byte)
-
-    for i <- 0..(size * size - 1) do
-      offset = i * 4
-      <<_::binary-size(offset), r, _g, _b, _a, _::binary>> = pixels
-      r
-    end
-  end
-
-  defp pixel(size, col, row) do
-    pixels = GL.read_pixels(0, 0, size, size, :rgba, :unsigned_byte)
-    offset = (row * size + col) * 4
-    <<_::binary-size(offset), r, g, b, _a, _::binary>> = pixels
-    {r, g, b}
-  end
-
-  defp close?(a, b, tolerance \\ 6), do: abs(a - b) <= tolerance
-
-  # ==========================================================================
   # :image
   # ==========================================================================
 
   describe ":image" do
     setup do
       size = 2
-      {fbo, _target} = offscreen(size)
+      fbo = offscreen(size)
 
       data = GL.create_texture()
       GL.bind_texture(:texture_2d, data)
@@ -248,8 +131,7 @@ defmodule WxMVU.GoldenTest do
       render = fn row_offset ->
         GL.bind_framebuffer(:both, fbo)
         GL.viewport(0, 0, size, size)
-        GL.clear_color(0.0, 0.0, 0.0, 1.0)
-        GL.clear(:color)
+        clear()
 
         Program.bind(program)
 
@@ -302,7 +184,7 @@ defmodule WxMVU.GoldenTest do
   describe ":line" do
     setup do
       size = 16
-      {fbo, _target} = offscreen(size)
+      fbo = offscreen(size)
 
       # One horizontal segment. a_neighbor must give the same direction at both
       # ends, or the perpendicular flips and the quad becomes a bowtie.
@@ -322,8 +204,7 @@ defmodule WxMVU.GoldenTest do
       covered_rows = fn line_width ->
         GL.bind_framebuffer(:both, fbo)
         GL.viewport(0, 0, size, size)
-        GL.clear_color(0.0, 0.0, 0.0, 1.0)
-        GL.clear(:color)
+        clear()
 
         Program.bind(program)
 
@@ -366,7 +247,7 @@ defmodule WxMVU.GoldenTest do
   describe ":grid" do
     setup do
       size = 32
-      {fbo, _target} = offscreen(size)
+      fbo = offscreen(size)
       {vao, _vbo} = buffer(quad_vertices())
 
       {:ok, program} = GridShader.load()
@@ -375,8 +256,7 @@ defmodule WxMVU.GoldenTest do
       render = fn thickness ->
         GL.bind_framebuffer(:both, fbo)
         GL.viewport(0, 0, size, size)
-        GL.clear_color(0.0, 0.0, 0.0, 1.0)
-        GL.clear(:color)
+        clear()
 
         Program.bind(program)
 
@@ -440,7 +320,7 @@ defmodule WxMVU.GoldenTest do
   describe ":mesh" do
     setup do
       size = 16
-      {fbo, _target} = offscreen(size)
+      fbo = offscreen(size)
 
       # A quad over the LEFT half, normals along +X.
       {vao, _vbo} =
@@ -459,8 +339,7 @@ defmodule WxMVU.GoldenTest do
       render = fn mvp, normal_matrix, light ->
         GL.bind_framebuffer(:both, fbo)
         GL.viewport(0, 0, size, size)
-        GL.clear_color(0.0, 0.0, 0.0, 1.0)
-        GL.clear(:color)
+        clear()
 
         Program.bind(program)
 
