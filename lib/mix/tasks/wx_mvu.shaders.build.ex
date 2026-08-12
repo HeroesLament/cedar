@@ -111,15 +111,17 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
         "--spirv-builder-version",
         manifest.rust_gpu.rev,
         "-o",
-        "./out"
+        "./out/#{shader.name}"
       ],
       workspace
     )
 
+    shader_out = Path.join(out_dir, shader.name)
+
     spv =
-      case Path.wildcard(Path.join(out_dir, "*.spv")) do
+      case Path.wildcard(Path.join(shader_out, "*.spv")) do
         [single] -> single
-        [] -> Mix.raise("cargo-gpu produced no .spv in #{out_dir}")
+        [] -> Mix.raise("cargo-gpu produced no .spv in #{shader_out}")
         many -> Mix.raise("expected one .spv, found #{length(many)}: #{inspect(many)}")
       end
 
@@ -127,7 +129,7 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
 
     sources =
       Map.new(shader.entry_points, fn {stage, entry_point} ->
-        target = Path.join(out_dir, "#{shader.name}.#{stage}")
+        target = Path.join(shader_out, "#{shader.name}.#{stage}")
         cmd!(
           "naga",
           ["--entry-point", entry_point, "--profile", manifest.profile, spv, target],

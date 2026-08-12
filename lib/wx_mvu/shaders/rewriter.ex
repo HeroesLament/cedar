@@ -100,16 +100,31 @@ defmodule WxMVU.Shaders.Rewriter do
     )
   end
 
-  @doc "Convenience: derive from the fragment stage, apply to both."
+  @doc """
+  Rewrites both stages of a shader.
+
+  Each stage is derived independently, because naga names a uniform block per
+  stage: the same block is `..._block_0Fragment` in one file and
+  `..._block_0Vertex` in the other, with instance variables suffixed `_fs` and
+  `_vs`. Deriving once and applying to both would leave the vertex stage
+  declaring a differently-named block, and GLSL links blocks by name - so the
+  two stages would not share one block, and only one of them would receive the
+  uniform data.
+
+  A stage that does not reference the block at all still carries the struct
+  declarations, so it falls back to the other stage's mapping for those.
+  """
   @spec rewrite_pair(String.t(), String.t(), spec()) ::
           {:ok, %{vert: String.t(), frag: String.t()}, map()} | {:error, String.t()}
   def rewrite_pair(vert, frag, spec) do
-    case derive(frag, spec) do
-      {:ok, mapping} ->
-        {:ok, %{vert: apply_mapping(vert, mapping), frag: apply_mapping(frag, mapping)}, mapping}
+    with {:ok, frag_mapping} <- derive(frag, spec) do
+      vert_out =
+        case derive(vert, spec) do
+          {:ok, vert_mapping} -> apply_mapping(vert, vert_mapping)
+          {:error, _no_block_in_this_stage} -> apply_mapping(vert, frag_mapping)
+        end
 
-      {:error, reason} ->
-        {:error, reason}
+      {:ok, %{vert: vert_out, frag: apply_mapping(frag, frag_mapping)}, frag_mapping}
     end
   end
 

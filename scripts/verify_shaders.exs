@@ -191,24 +191,33 @@ end
 
 Verify.section("std140")
 
-# Mirrors shaders/image/src/lib.rs `Uniforms`. If naga ever changes how it
-# lays the block out, this is where it shows up.
-expected = Std140.layout(row_offset: :f32, domain_min: :f32, domain_max: :f32)
-Verify.info("computed block size: #{expected.size} bytes")
-Verify.info("offsets: #{inspect(Std140.offsets(expected))}")
+# Mirrors the uniform blocks declared in shaders/shaders.exs. If naga ever
+# changes how it lays a block out, this is where it surfaces - the driver's
+# own GL_UNIFORM_BLOCK_DATA_SIZE against our computed size.
+expected_layouts = [
+  {"image", [row_offset: :f32, domain_min: :f32, domain_max: :f32]},
+  {"line", [color: :vec4, viewport: :vec2, line_width: :f32]}
+]
 
-case Enum.find(linked, fn {name, _} -> name == "image" end) do
-  {_name, program} ->
-    driver_size = Verify.safe(fn -> GL.get_active_uniform_block_data_size(program, 0) end)
+for {name, fields} <- expected_layouts do
+  expected = Std140.layout(fields)
 
-    if driver_size == expected.size do
-      Verify.ok("driver agrees: #{driver_size} bytes")
-    else
-      Verify.fail("driver says #{inspect(driver_size)}, we computed #{expected.size}")
-    end
+  case Enum.find(linked, fn {linked_name, _} -> linked_name == name end) do
+    {_name, program} ->
+      driver_size = Verify.safe(fn -> GL.get_active_uniform_block_data_size(program, 0) end)
 
-  nil ->
-    Verify.info("image program not linked, skipping")
+      if driver_size == expected.size do
+        Verify.ok("#{name}: #{driver_size} bytes, offsets #{inspect(Std140.offsets(expected))}")
+      else
+        Verify.fail(
+          "#{name}: driver says #{inspect(driver_size)}, we computed #{expected.size} " <>
+            "(offsets #{inspect(Std140.offsets(expected))})"
+        )
+      end
+
+    nil ->
+      Verify.info("#{name} not linked, skipping")
+  end
 end
 
 # ============================================================================

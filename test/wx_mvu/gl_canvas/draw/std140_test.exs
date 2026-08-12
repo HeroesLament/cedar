@@ -42,6 +42,28 @@ defmodule WxMVU.GLCanvas.Draw.Std140Test do
     end
   end
 
+  describe "layout/1 - blocks that actually ship" do
+    test "the :image block is three floats rounded up to 16" do
+      layout = Std140.layout(row_offset: :f32, domain_min: :f32, domain_max: :f32)
+
+      assert Std140.offsets(layout) == %{row_offset: 0, domain_min: 4, domain_max: 8}
+      assert layout.size == 16
+    end
+
+    test "the :line block mixes alignments and packs to 32" do
+      # vec4 at 0 (16 bytes), vec2 aligns to 8 so lands at 16, f32 at 24,
+      # ending at 28 - then the block rounds up to 32. Four bytes of pure tail
+      # padding that nobody would get right by hand.
+      #
+      # Confirmed against Apple's driver: verify_shaders reports
+      # `uniform block [0] "LineUniforms" data_size=32`.
+      layout = Std140.layout(color: :vec4, viewport: :vec2, line_width: :f32)
+
+      assert Std140.offsets(layout) == %{color: 0, viewport: 16, line_width: 24}
+      assert layout.size == 32
+    end
+  end
+
   describe "layout/1 - vec2 alignment" do
     test "vec2 aligns to 8, not 4" do
       layout = Std140.layout(a: :f32, b: :vec2)
