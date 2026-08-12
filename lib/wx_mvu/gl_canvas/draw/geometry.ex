@@ -171,6 +171,47 @@ defmodule WxMVU.GLCanvas.Draw.Geometry do
     %{geometry | vertex_count: div(byte_size(vertices), geometry.stride)}
   end
 
+  @doc """
+  Replaces both the vertex data and the index data.
+
+  Distinct from `update/2` because an indexed mesh cannot have its vertices
+  swapped alone: the indices that referred to the old vertices would address
+  past the end of the new ones, and OpenGL's response to an out-of-range index
+  is undefined rather than an error.
+
+  The geometry must have been created with `:indices`, since there is no
+  element buffer to write into otherwise.
+  """
+  @spec replace(t(), binary(), binary()) :: t()
+  def replace(%__MODULE__{ebo: nil}, _vertices, _indices) do
+    raise ArgumentError,
+          "this geometry has no element buffer; create it with :indices to " <>
+            "use replace/3, or use update/2 for a non-indexed draw"
+  end
+
+  def replace(%__MODULE__{} = geometry, vertices, indices)
+      when is_binary(vertices) and is_binary(indices) do
+    if rem(byte_size(vertices), geometry.stride) != 0 do
+      raise ArgumentError,
+            "vertex data is #{byte_size(vertices)} bytes, not a multiple of the " <>
+              "#{geometry.stride}-byte stride"
+    end
+
+    GL.bind_buffer(:array, geometry.vbo)
+    GL.buffer_data(:array, vertices, :dynamic)
+
+    GL.bind_vertex_array(geometry.vao)
+    GL.bind_buffer(:element, geometry.ebo)
+    GL.buffer_data(:element, indices, :dynamic)
+    GL.bind_vertex_array(0)
+
+    %{
+      geometry
+      | vertex_count: div(byte_size(vertices), geometry.stride),
+        index_count: div(byte_size(indices), index_size(geometry.index_type))
+    }
+  end
+
   @doc "Binds and draws. Uses `draw_elements` when the geometry has indices."
   @spec draw(t()) :: t()
   def draw(%__MODULE__{} = geometry) do

@@ -78,8 +78,19 @@ defmodule WxMVU.GLCase do
 
   Returns the framebuffer object. Tests read from it with `pixel/3` or
   `red_channel/1`.
+
+  ## Options
+
+    * `:depth` - attach a depth buffer, default `false`
+
+  Without a depth attachment the depth test *passes unconditionally* rather
+  than failing — GL has nothing to compare against — so a 3D test that forgets
+  it still draws something, just with the far faces of the model painted over
+  the near ones. Anything asserting on solid geometry wants `depth: true`.
   """
-  def offscreen(size) do
+  def offscreen(size, opts \\ [])
+
+  def offscreen(size, opts) do
     target = GL.create_texture()
     GL.bind_texture(:texture_2d, target)
 
@@ -98,6 +109,13 @@ defmodule WxMVU.GLCase do
     fbo = GL.create_framebuffer()
     GL.bind_framebuffer(:both, fbo)
     GL.framebuffer_texture_2d(:color, 0, target)
+
+    if Keyword.get(opts, :depth, false) do
+      rbo = GL.create_renderbuffer()
+      GL.bind_renderbuffer(rbo)
+      GL.renderbuffer_storage(:depth24_stencil8, size, size)
+      GL.framebuffer_renderbuffer(:depth_stencil, rbo)
+    end
 
     ExUnit.Assertions.assert(GL.check_framebuffer_status() == :complete)
 
@@ -156,10 +174,22 @@ defmodule WxMVU.GLCase do
   @doc "Vertices for a clip-space quad with texture coordinates, as a strip."
   def quad_vertices do
     floats([
-      -1.0, -1.0, 0.0, 0.0,
-      1.0, -1.0, 1.0, 0.0,
-      -1.0, 1.0, 0.0, 1.0,
-      1.0, 1.0, 1.0, 1.0
+      -1.0,
+      -1.0,
+      0.0,
+      0.0,
+      1.0,
+      -1.0,
+      1.0,
+      0.0,
+      -1.0,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
     ])
   end
 

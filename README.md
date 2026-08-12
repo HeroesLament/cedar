@@ -71,6 +71,26 @@ Built-in visuals are named by atom, exactly as widgets are:
 | `:image` | a 2D scalar field through a colormap — waterfalls, spectrograms, constellations, heatmaps |
 | `:line` | polylines with a width in pixels — traces, scope sweeps, axis rules |
 | `:grid` | analytic antialiased gridlines |
+| `:mesh` | lit triangle geometry with a camera — the 3D viewport |
+
+A 3D viewport is the same shape of declaration, with a camera instead of a
+colormap:
+
+```elixir
+{:ensure_visual, :viewport, :mesh, :root,
+  eye: model.camera.eye,
+  target: model.camera.target,
+  base_color: {0.8, 0.55, 0.15, 1.0}}
+```
+
+```elixir
+WxMVU.Visual.send_data(:viewport, {:mesh, WxMVU.Visual.Mesh.box({2.0, 0.4, 0.4})})
+```
+
+Orbiting that camera changes two tuples in the model; the differ turns it into
+a 144-byte uniform write, and the mesh on the GPU is not touched. `WxMVU.Math`
+supplies the matrices — column-major, degrees, right-handed — if you want to
+build a transform yourself.
 
 Your own visual implements `WxMVU.Visual` and is referenced by module, matching
 how `:ensure_gl_canvas` takes one:
