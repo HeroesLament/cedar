@@ -9,11 +9,19 @@ defmodule WxMVU.GLCanvas.Draw.Colormap do
       Colormap.texture(:viridis)
       Colormap.texture([{0.0, {0, 0, 0}}, {1.0, {255, 255, 255}}])
 
-  The named maps are the perceptually-uniform ones plus the two conventional
-  ones. `:viridis` is the sensible default for scientific data: it is
-  monotonic in luminance, so it survives being printed in greyscale and does
-  not invent features the data does not contain, which `:hot` and rainbow maps
-  both do.
+  The named maps are the perceptually-uniform ones plus the conventional ones.
+  `:viridis` is the sensible default for scientific data: it is monotonic in
+  luminance, so it survives being printed in greyscale and does not invent
+  features the data does not contain, which `:hot` and rainbow maps both do.
+
+  `:turbo` is the exception worth knowing about. It is a rainbow, with all the
+  usual objections, but it was designed to fix the worst of them and it earns
+  its place on one specific job: a narrow bright feature over a wide dark
+  floor, which is what an RF waterfall is. A thin carrier a few dB above the
+  noise is legible in turbo and nearly invisible in viridis, because viridis
+  spends its luminance range evenly and turbo spends it where the signal is.
+  Reach for it when the question is "is there something there", not when it is
+  "how much".
   """
 
   alias WxMVU.GLCanvas.Draw.Texture
@@ -21,7 +29,7 @@ defmodule WxMVU.GLCanvas.Draw.Colormap do
   @entries 256
 
   @type stop :: {float(), {0..255, 0..255, 0..255}}
-  @type name :: :viridis | :plasma | :inferno | :magma | :hot | :grayscale
+  @type name :: :viridis | :plasma | :inferno | :magma | :turbo | :hot | :grayscale
   @type spec :: name() | [stop()]
 
   @maps %{
@@ -52,6 +60,17 @@ defmodule WxMVU.GLCanvas.Draw.Colormap do
       {0.5, {183, 55, 121}},
       {0.75, {252, 137, 97}},
       {1.0, {252, 253, 191}}
+    ],
+    turbo: [
+      {0.0, {48, 18, 59}},
+      {0.125, {70, 66, 161}},
+      {0.25, {62, 122, 229}},
+      {0.375, {31, 178, 219}},
+      {0.5, {58, 222, 145}},
+      {0.625, {150, 245, 76}},
+      {0.75, {228, 216, 56}},
+      {0.875, {248, 137, 39}},
+      {1.0, {122, 4, 3}}
     ],
     hot: [
       {0.0, {0, 0, 0}},
