@@ -36,3 +36,6 @@ shaders/target/
 
 # macOS Finder droppings
 .DS_Store
+
+# Unpacked hex tarball, not source
+/wx_mvu/
