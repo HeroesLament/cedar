@@ -30,6 +30,20 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
   `cargo-gpu` manages its own pinned nightly in an isolated cache, so nothing
   here touches the stable toolchain used by `native/`.
 
+  ## Checking for drift
+
+      mix wx_mvu.shaders.build --check
+
+  Regenerates without writing and fails if the result differs from what is
+  committed. Since the toolchain is pinned to an exact revision, regeneration is
+  byte-reproducible, so any difference means the committed GLSL no longer
+  matches the Rust it claims to come from - someone edited a shader and forgot
+  to rebuild, or edited `priv/shaders` by hand.
+
+  Suitable for CI on a machine that has the toolchain. It is not a substitute
+  for `verify_shaders.exs`, which checks something different: that the artifacts
+  actually compile on a real driver.
+
   ## After building
 
   Run `mix run scripts/verify_shaders.exs` to confirm the output links on the
@@ -43,7 +57,8 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
 
 
   @impl Mix.Task
-  def run(_args) do
+  def run(args) do
+    check? = "--check" in args
     workspace = Path.join(File.cwd!(), "shaders")
     out_dir = Path.join(workspace, "out")
     priv_dir = Path.join(File.cwd!(), "priv/shaders")
@@ -64,17 +79,37 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
         "on #{manifest.rust_gpu.toolchain}, target #{manifest.target}"
     )
 
+    if check?, do: Mix.shell().info("checking committed artifacts, writing nothing")
+
     Enum.each(
       manifest.shaders,
-      &build_shader(&1, manifest, workspace, out_dir, priv_dir)
+      &build_shader(&1, manifest, workspace, out_dir, priv_dir, check?)
     )
 
-    Mix.shell().info(
-      "\nDone. Now run:\n" <>
-        "  mix wx_mvu.shaders.test              # host-side shader math\n" <>
-        "  mix run scripts/verify_shaders.exs   # links on the local driver\n" <>
-        "  mix run scripts/golden_image.exs     # renders correctly"
-    )
+    case Process.get(:drifted, []) do
+      [] ->
+        :ok
+
+      drifted ->
+        Mix.raise("""
+        committed GLSL does not match what the Rust currently produces:
+
+        #{Enum.map_join(drifted, "\n", &"  #{&1}")}
+
+        Run `mix wx_mvu.shaders.build` and commit the result.
+        """)
+    end
+
+    if check?, do: Mix.shell().info("\nCommitted artifacts are up to date.")
+
+    unless check?,
+      do:
+        Mix.shell().info(
+          "\nDone. Now run:\n" <>
+              "  mix wx_mvu.shaders.test              # host-side shader math\n" <>
+            "  mix run scripts/verify_shaders.exs   # links on the local driver\n" <>
+            "  mix run scripts/golden_image.exs     # renders correctly"
+        )
   end
 
   # ==========================================================================
@@ -90,7 +125,7 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
     manifest
   end
 
-  defp build_shader(shader, manifest, workspace, out_dir, priv_dir) do
+  defp build_shader(shader, manifest, workspace, out_dir, priv_dir, check?) do
     Mix.shell().info("\n== #{shader.name}")
 
     # --spirv-builder-source/-version pin the codegen backend to the same
@@ -146,8 +181,25 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
 
         Enum.each(rewritten, fn {stage, glsl} ->
           path = Path.join(priv_dir, "#{shader.name}.#{stage}")
-          File.write!(path, glsl)
-          Mix.shell().info("   wrote    #{Path.relative_to(path, File.cwd!())}")
+          relative = Path.relative_to(path, File.cwd!())
+
+          if check? do
+            case File.read(path) do
+              {:ok, ^glsl} ->
+                Mix.shell().info("   ok       #{relative}")
+
+              {:ok, _different} ->
+                Mix.shell().error("   DRIFT    #{relative}")
+                Process.put(:drifted, [relative | Process.get(:drifted, [])])
+
+              {:error, :enoent} ->
+                Mix.shell().error("   MISSING  #{relative}")
+                Process.put(:drifted, [relative | Process.get(:drifted, [])])
+            end
+          else
+            File.write!(path, glsl)
+            Mix.shell().info("   wrote    #{relative}")
+          end
         end)
 
       {:error, reason} ->
