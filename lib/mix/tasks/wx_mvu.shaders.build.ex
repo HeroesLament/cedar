@@ -1,0 +1,174 @@
+defmodule Mix.Tasks.WxMvu.Shaders.Build do
+  @shortdoc "Builds shaders from Rust and writes committed GLSL 410 into priv/"
+
+  @moduledoc """
+  Builds the shader crates in `shaders/` and writes GLSL 410 into `priv/shaders/`.
+
+      mix wx_mvu.shaders.build
+
+  This is a maintainer task. Consumers of wx_mvu never run it - they get the
+  committed GLSL from the Hex package and need no Rust toolchain at all.
+
+  ## Pipeline
+
+      shaders/<crate>/src/lib.rs
+        -> cargo gpu build --target spirv-unknown-vulkan1.1     (*.spv)
+        -> naga --profile core410                               (generated GLSL)
+        -> WxMVU.Shaders.Rewriter                               (stable names)
+        -> priv/shaders/<name>.{vert,frag}                      (committed)
+
+  The rewrite step is not cosmetic. naga names the uniform block from its own
+  type counter - `type_6_block_0Fragment` - and that name is the key passed to
+  `glGetUniformBlockIndex` at runtime. Committing it as-is would couple the
+  runtime to a number that moves whenever a struct is added or naga is bumped.
+
+  ## Requirements
+
+      cargo install --git https://github.com/Rust-GPU/rust-gpu cargo-gpu
+      cargo install naga-cli
+
+  `cargo-gpu` manages its own pinned nightly in an isolated cache, so nothing
+  here touches the stable toolchain used by `native/`.
+
+  ## After building
+
+  Run `mix run scripts/verify_shaders.exs` to confirm the output links on the
+  local driver before committing. On macOS that driver is Apple's frozen 4.1
+  implementation, the strictest consumer of the three major platforms.
+  """
+
+  use Mix.Task
+
+  alias WxMVU.Shaders.Rewriter
+
+  @target "spirv-unknown-vulkan1.1"
+  @profile "core410"
+
+  @impl Mix.Task
+  def run(_args) do
+    workspace = Path.join(File.cwd!(), "shaders")
+    out_dir = Path.join(workspace, "out")
+    priv_dir = Path.join(File.cwd!(), "priv/shaders")
+
+    unless File.dir?(workspace) do
+      Mix.raise("no shaders/ workspace found at #{workspace}")
+    end
+
+    require_executable!("cargo-gpu")
+    require_executable!("naga")
+
+    File.mkdir_p!(priv_dir)
+
+    workspace
+    |> read_manifest()
+    |> Enum.each(&build_shader(&1, workspace, out_dir, priv_dir))
+
+    Mix.shell().info("\nDone. Now run: mix run scripts/verify_shaders.exs")
+  end
+
+  # ==========================================================================
+
+  defp read_manifest(workspace) do
+    path = Path.join(workspace, "shaders.exs")
+
+    unless File.exists?(path) do
+      Mix.raise("no shader manifest at #{path}")
+    end
+
+    {manifest, _bindings} = Code.eval_file(path)
+    manifest
+  end
+
+  defp build_shader(shader, workspace, out_dir, priv_dir) do
+    Mix.shell().info("\n== #{shader.name}")
+
+    cmd!(
+      "cargo-gpu",
+      [
+        "build",
+        "--shader-crate",
+        "./#{shader.crate}",
+        "--target",
+        @target,
+        "--spirv-metadata",
+        "name-variables",
+        "-o",
+        "./out"
+      ],
+      workspace
+    )
+
+    spv =
+      case Path.wildcard(Path.join(out_dir, "*.spv")) do
+        [single] -> single
+        [] -> Mix.raise("cargo-gpu produced no .spv in #{out_dir}")
+        many -> Mix.raise("expected one .spv, found #{length(many)}: #{inspect(many)}")
+      end
+
+    Mix.shell().info("   spirv    #{Path.relative_to(spv, File.cwd!())}")
+
+    sources =
+      Map.new(shader.entry_points, fn {stage, entry_point} ->
+        target = Path.join(out_dir, "#{shader.name}.#{stage}")
+        cmd!("naga", ["--entry-point", entry_point, "--profile", @profile, spv, target], workspace)
+        {stage, File.read!(target)}
+      end)
+
+    spec = %{block: shader.block, samplers: Map.get(shader, :samplers, %{})}
+
+    case Rewriter.rewrite_pair(sources.vert, sources.frag, spec) do
+      {:ok, rewritten, mapping} ->
+        report(mapping)
+
+        Enum.each(rewritten, fn {stage, glsl} ->
+          path = Path.join(priv_dir, "#{shader.name}.#{stage}")
+          File.write!(path, glsl)
+          Mix.shell().info("   wrote    #{Path.relative_to(path, File.cwd!())}")
+        end)
+
+      {:error, reason} ->
+        Mix.raise("""
+        rewriting #{shader.name} failed:
+
+          #{reason}
+
+        The generated GLSL no longer matches the declaration in
+        shaders/shaders.exs. Either the Rust source changed without the
+        manifest being updated, or naga's output shape has changed.
+        """)
+    end
+  end
+
+  defp report(mapping) do
+    {block_from, block_to} = mapping.block
+    Mix.shell().info("   block    #{block_from} -> #{block_to}")
+
+    Enum.each(mapping.samplers, fn {from, to} ->
+      Mix.shell().info("   sampler  #{from} -> #{to}")
+    end)
+
+    fields = Enum.map_join(mapping.fields, ", ", fn {_from, to} -> to end)
+    Mix.shell().info("   fields   #{fields}")
+  end
+
+  defp cmd!(executable, args, cd) do
+    case System.cmd(executable, args, cd: cd, stderr_to_stdout: true) do
+      {_output, 0} ->
+        :ok
+
+      {output, status} ->
+        Mix.raise("#{executable} exited #{status}:\n\n#{output}")
+    end
+  end
+
+  defp require_executable!(name) do
+    unless System.find_executable(name) do
+      Mix.raise("""
+      #{name} not found on PATH.
+
+          cargo install --git https://github.com/Rust-GPU/rust-gpu cargo-gpu
+          cargo install naga-cli
+      """)
+    end
+  end
+end

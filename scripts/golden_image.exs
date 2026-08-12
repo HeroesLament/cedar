@@ -16,18 +16,18 @@
 alias WxMVU.GLCanvas.Draw.Program
 alias WxMVU.Renderer.GL
 
-# Names are naga's, not ours - see the rename-pass note in the shader README.
+# Names are ours: mix wx_mvu.shaders.build rewrites naga's generated ones.
 defmodule ImageShader do
   use WxMVU.GLCanvas.Draw.Program,
     source: {:priv, :wx_mvu, "shaders/image"},
     blocks: [
       per_frame: [
-        name: "type_6_block_0Fragment",
+        name: "Uniforms",
         binding: 0,
         fields: [row_offset: :f32, domain_min: :f32, domain_max: :f32]
       ]
     ],
-    samplers: [{:"_group_0_binding_1_fs", 0}, {:"_group_0_binding_3_fs", 1}],
+    samplers: [u_data: 0, u_colormap: 1],
     vertex_layout: [a_position: {:f32, 2}, a_texcoord: {:f32, 2}]
 end
 
