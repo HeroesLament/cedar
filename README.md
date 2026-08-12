@@ -29,10 +29,64 @@ clear ownership and lifecycle boundaries that fit naturally into OTP systems.
 
 ---
 
+## Visuals
+
+High-throughput rendering is declared, not wired. A waterfall is a line in
+`view/1`:
+
+```elixir
+def view(model) do
+  [
+    {:ensure_window, :main, title: "Spectrum"},
+    {:ensure_panel, :root, :main, []},
+
+    {:ensure_visual, :waterfall, :image, :root,
+      grid: {512, 256},
+      domain: {model.db_floor, 0.0},
+      colormap: :viridis,
+      advance: :per_datum},
+
+    {:ensure_widget, :floor, :slider, :root, min: -140, max: -20},
+    {:layout, :root, {:vbox, [], [:waterfall, :floor]}},
+    {:refresh, :main}
+  ]
+end
+```
+
+Sample data bypasses MVU, as it does for canvases:
+
+```elixir
+WxMVU.Visual.send_data(:waterfall, {:row, bins})
+```
+
+Configuration flows the other way. Dragging that slider changes `model.db_floor`,
+the differ sees one visual whose declaration changed, and the runtime issues a
+single uniform write — it does not tear down the texture holding the waterfall's
+history.
+
+Built-in visuals are named by atom, exactly as widgets are:
+
+| Visual | Draws |
+|---|---|
+| `:image` | a 2D scalar field through a colormap — waterfalls, spectrograms, constellations, heatmaps |
+| `:line` | polylines with a width in pixels — traces, scope sweeps, axis rules |
+| `:grid` | analytic antialiased gridlines |
+
+Your own visual implements `WxMVU.Visual` and is referenced by module, matching
+how `:ensure_gl_canvas` takes one:
+
+```elixir
+{:ensure_visual, :radar, :custom, :root,
+  module: MyApp.Visuals.PolarRadar, opts: [sweep_rate: 30]}
+```
+
+`WxMVU.GLCanvas` remains for cases a visual does not cover — it is what visuals
+are built on, and nothing about it has been removed.
+
 ## Shaders
 
-Canvases do not hand-write GLSL. wx_mvu ships a small library of shaders written
-in Rust, compiled ahead of time to GLSL 410 and committed under `priv/shaders`:
+Visuals are backed by a small library of shaders written in Rust, compiled ahead
+of time to GLSL 410 and committed under `priv/shaders`:
 
 ```
 shaders/<name>/src/lib.rs  ->  SPIR-V  ->  GLSL 410  ->  priv/shaders/*.{vert,frag}
@@ -42,37 +96,9 @@ shaders/<name>/src/lib.rs  ->  SPIR-V  ->  GLSL 410  ->  priv/shaders/*.{vert,fr
 Rust, the pinned nightly, `cargo-gpu` and `naga` are maintainer tools only, and
 none of them appears in your dependency graph.
 
-Shipped today: `image` (data texture through a colormap — waterfalls,
-spectrograms, constellations), `line` (polylines expanded to quads, because
-`glLineWidth` above 1.0 is unreliable in a 4.1 core profile), `grid` (analytic
-antialiased gridlines) and `mesh` (lit geometry).
-
-Shaders are declared rather than wired by hand:
-
-```elixir
-defmodule MyCanvas.Shader do
-  use WxMVU.GLCanvas.Draw.Program,
-    source: {:priv, :wx_mvu, "shaders/image"},
-    blocks: [
-      per_frame: [
-        name: "Uniforms",
-        binding: 0,
-        fields: [row_offset: :f32, domain_min: :f32, domain_max: :f32]
-      ]
-    ],
-    samplers: [u_data: 0, u_colormap: 1],
-    vertex_layout: [a_position: {:f32, 2}, a_texcoord: {:f32, 2}]
-end
-```
-
-From that declaration wx_mvu derives the std140 packing, the vertex stride and
-attribute offsets, and the uniform block plumbing — and validates all of it at
-load, including a cross-check of the computed block size against the driver's
-own `GL_UNIFORM_BLOCK_DATA_SIZE`. A mismatch raises with a legible message
-rather than rendering a black screen.
-
-See `shaders/README.md` for the build commands, how to add a shader, and the
-OpenGL 4.1 constraints the shader source has to respect.
+Applications do not write GLSL either. If you are adding a shader to wx_mvu
+itself, see `shaders/README.md` for the build commands and the OpenGL 4.1
+constraints the source has to respect.
 
 ---
 
