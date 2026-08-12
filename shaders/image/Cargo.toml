@@ -10,6 +10,9 @@ publish = false
 crate-type = ["lib", "dylib"]
 
 [dependencies]
+# Shader maths, with no spirv-std dependency so it tests on stable.
+wx-mvu-shader-core = { path = "../core" }
+
 # Pinned to an exact revision, not a branch. rust-gpu publishes alphas years
 # apart and tells you to build from `main`, so a floating git dependency would
 # silently move the compiler out from under committed artifacts. Bumping this

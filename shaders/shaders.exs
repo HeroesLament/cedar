@@ -45,6 +45,12 @@
   target: "spirv-unknown-vulkan1.1",
   profile: "core410",
 
+  # Crates that must build and test on *stable* Rust. They carry the shader
+  # maths and must never acquire a spirv-std dependency, which would drag the
+  # nightly requirement into code that has no need of it.
+  # `mix wx_mvu.shaders.test` runs these on stable specifically to catch that.
+  stable_crates: ["wx-mvu-shader-core"],
+
   shaders: [
     %{
       name: "image",
