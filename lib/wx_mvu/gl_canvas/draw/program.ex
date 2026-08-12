@@ -56,6 +56,7 @@ defmodule WxMVU.GLCanvas.Draw.Program do
   """
 
   alias WxMVU.GLCanvas.Draw.Std140
+  alias WxMVU.GLCanvas.Draw.VertexLayout
   alias WxMVU.Renderer.GL
 
   @type block_runtime :: %{
@@ -89,7 +90,7 @@ defmodule WxMVU.GLCanvas.Draw.Program do
     vertex_layout = opts |> Keyword.get(:vertex_layout, []) |> literal!(:vertex_layout)
 
     normalized_blocks = normalize_blocks(blocks)
-    {attributes, stride} = normalize_vertex_layout(vertex_layout)
+    {attributes, stride} = VertexLayout.normalize(vertex_layout)
 
     layout_clauses =
       for block <- normalized_blocks do
@@ -178,48 +179,6 @@ defmodule WxMVU.GLCanvas.Draw.Program do
       :error ->
         raise ArgumentError, "uniform block #{inspect(key)} is missing #{inspect(option)}"
     end
-  end
-
-  defp normalize_vertex_layout(vertex_layout) do
-    {attributes, stride} =
-      vertex_layout
-      |> Enum.with_index()
-      |> Enum.map_reduce(0, fn {{name, {type, count}}, index}, offset ->
-        attribute = %{
-          name: name,
-          index: index,
-          count: count,
-          type: attrib_gl_type(type),
-          normalized: false,
-          offset: offset
-        }
-
-        {attribute, offset + attrib_size(type) * count}
-      end)
-
-    assert_unique!(Enum.map(attributes, & &1.name), "vertex attributes")
-
-    {attributes, stride}
-  end
-
-  defp attrib_size(t) when t in [:f32, :i32, :u32], do: 4
-  defp attrib_size(t) when t in [:i16, :u16], do: 2
-  defp attrib_size(t) when t in [:i8, :u8], do: 1
-
-  defp attrib_size(other) do
-    raise ArgumentError, "unsupported vertex attribute type: #{inspect(other)}"
-  end
-
-  defp attrib_gl_type(:f32), do: :float
-  defp attrib_gl_type(:i32), do: :int
-  defp attrib_gl_type(:u32), do: :unsigned_int
-  defp attrib_gl_type(:i16), do: :short
-  defp attrib_gl_type(:u16), do: :unsigned_short
-  defp attrib_gl_type(:i8), do: :byte
-  defp attrib_gl_type(:u8), do: :unsigned_byte
-
-  defp attrib_gl_type(other) do
-    raise ArgumentError, "unsupported vertex attribute type: #{inspect(other)}"
   end
 
   defp assert_unique!(values, what) do
