@@ -192,7 +192,9 @@ defmodule WxMVU.Visual.ImageTest do
   describe "update/2" do
     test "a changed domain is a uniform write, not a rebuild" do
       state = waterfall(advance: :none)
-      {:ok, state} = Visual.Image.handle_data(state, {:grid, floats([-50.0, -50.0, -50.0, -50.0])})
+
+      {:ok, state} =
+        Visual.Image.handle_data(state, {:grid, floats([-50.0, -50.0, -50.0, -50.0])})
 
       # -50 sits halfway through -100..0, so it renders halfway along the ramp.
       state = draw(state)
@@ -389,11 +391,148 @@ defmodule WxMVU.Visual.ImageTest do
     end
   end
 
+  describe "Visual.Mesh" do
+    setup do
+      fbo = offscreen(32, depth: true)
+      %{fbo: fbo}
+    end
+
+    defp lit_pixels(size) do
+      Enum.count(red_channel(size), &(&1 > 8))
+    end
+
+    test "draws nothing until it has geometry" do
+      {:ok, state} = Visual.Mesh.init(%{}, base_color: {1.0, 0.0, 0.0, 1.0})
+
+      clear()
+      GL.clear(:depth)
+      {:ok, state} = Visual.Mesh.draw(state, frame(32))
+
+      assert lit_pixels(32) == 0
+
+      Visual.Mesh.destroy(state)
+    end
+
+    test "a box in front of the camera covers pixels" do
+      {:ok, state} =
+        Visual.Mesh.init(%{},
+          mesh: Visual.Mesh.box(2.0),
+          eye: {0.0, 0.0, 5.0},
+          base_color: {1.0, 0.0, 0.0, 1.0}
+        )
+
+      clear()
+      GL.clear(:depth)
+      {:ok, state} = Visual.Mesh.draw(state, frame(32))
+
+      lit = lit_pixels(32)
+
+      assert lit > 0, "the box rendered nothing"
+      assert lit < 32 * 32, "the box filled the entire frame"
+
+      Visual.Mesh.destroy(state)
+    end
+
+    test "the camera is a live uniform: backing off shrinks the box" do
+      # The whole reason the projection is rebuilt per draw rather than baked
+      # into the vertex buffer at init.
+      {:ok, state} =
+        Visual.Mesh.init(%{},
+          mesh: Visual.Mesh.box(2.0),
+          eye: {0.0, 0.0, 4.0},
+          base_color: {1.0, 0.0, 0.0, 1.0}
+        )
+
+      clear()
+      GL.clear(:depth)
+      {:ok, state} = Visual.Mesh.draw(state, frame(32))
+      near = lit_pixels(32)
+
+      {:ok, state} = Visual.Mesh.update(state, eye: {0.0, 0.0, 12.0})
+      clear()
+      GL.clear(:depth)
+      {:ok, state} = Visual.Mesh.draw(state, frame(32))
+      far = lit_pixels(32)
+
+      assert far < near, "#{near} -> #{far}"
+      assert far > 0, "the box vanished entirely"
+
+      Visual.Mesh.destroy(state)
+    end
+
+    test "lighting varies across faces rather than painting a flat silhouette" do
+      # Lambert with an ambient floor: a corner-on box shows at least two
+      # distinct brightnesses. A flat result means the normal matrix or the
+      # light direction never reached the shader.
+      {:ok, state} =
+        Visual.Mesh.init(%{},
+          mesh: Visual.Mesh.box(2.0),
+          eye: {4.0, 3.0, 5.0},
+          light_direction: {0.3, 0.9, 0.4},
+          base_color: {1.0, 1.0, 1.0, 1.0}
+        )
+
+      clear()
+      GL.clear(:depth)
+      {:ok, state} = Visual.Mesh.draw(state, frame(32))
+
+      shades = red_channel(32) |> Enum.reject(&(&1 == 0)) |> Enum.uniq()
+
+      assert length(shades) >= 2, "every lit pixel is #{inspect(shades)}"
+
+      Visual.Mesh.destroy(state)
+    end
+
+    test "sending a new mesh replaces the old one" do
+      {:ok, state} =
+        Visual.Mesh.init(%{},
+          mesh: Visual.Mesh.box(0.5),
+          eye: {0.0, 0.0, 5.0},
+          base_color: {1.0, 0.0, 0.0, 1.0}
+        )
+
+      clear()
+      GL.clear(:depth)
+      {:ok, state} = Visual.Mesh.draw(state, frame(32))
+      small = lit_pixels(32)
+
+      {:ok, state} = Visual.Mesh.handle_data(state, {:mesh, Visual.Mesh.box(3.0)})
+      clear()
+      GL.clear(:depth)
+      {:ok, state} = Visual.Mesh.draw(state, frame(32))
+      large = lit_pixels(32)
+
+      assert large > small, "#{small} -> #{large}"
+
+      Visual.Mesh.destroy(state)
+    end
+
+    test "clear empties the geometry" do
+      {:ok, state} =
+        Visual.Mesh.init(%{},
+          mesh: Visual.Mesh.box(2.0),
+          eye: {0.0, 0.0, 5.0},
+          base_color: {1.0, 0.0, 0.0, 1.0}
+        )
+
+      {:ok, state} = Visual.Mesh.handle_data(state, :clear)
+
+      clear()
+      GL.clear(:depth)
+      {:ok, state} = Visual.Mesh.draw(state, frame(32))
+
+      assert lit_pixels(32) == 0
+
+      Visual.Mesh.destroy(state)
+    end
+  end
+
   describe "resolve/1" do
     test "built-in visuals are named by atom, as widgets are" do
       assert Visual.resolve(:image) == WxMVU.Visual.Image
       assert Visual.resolve(:line) == WxMVU.Visual.Line
       assert Visual.resolve(:grid) == WxMVU.Visual.Grid
+      assert Visual.resolve(:mesh) == WxMVU.Visual.Mesh
     end
 
     test "an unknown name says what is available" do
