@@ -118,7 +118,17 @@ fn main() {
     let mut shelf_height = 0u32;
     let mut used_height = 0u32;
 
+    let mut missing: Vec<char> = Vec::new();
+
     for ch in args.chars.chars() {
+        // A character the font has no glyph for rasterizes to an empty bitmap,
+        // which is indistinguishable from a space unless you ask. Silence here
+        // means a label that renders with holes in it and nothing to explain
+        // why.
+        if font.lookup_glyph_index(ch) == 0 && ch != ' ' {
+            missing.push(ch);
+        }
+
         let (metrics, bitmap) = font.rasterize(ch, args.size);
 
         // A space has an advance and no ink. Giving it a cell would cost an
@@ -218,6 +228,14 @@ fn main() {
     let json = args.out.join(format!("{}.json", args.name));
     fs::write(&json, metrics_json(&args, &placed, &line_metrics, &kerning, height))
         .expect("writing the metrics");
+
+    if !missing.is_empty() {
+        eprintln!(
+            "WARNING: {} requested characters have no glyph in this font: {}",
+            missing.len(),
+            missing.iter().collect::<String>()
+        );
+    }
 
     eprintln!(
         "{}: {} glyphs, {}x{} atlas, {} bytes",

@@ -23,6 +23,27 @@ defmodule WxMVU.Visual do
   This is the split `WxMVU.GLCanvas` already makes for canvases. Visuals
   inherit it rather than inventing something new.
 
+  ## Input
+
+  A visual that should respond to the mouse names a process to tell:
+
+      {:ensure_visual, :board, :layers, :root, notify: self(), layers: [...]}
+
+  `view/1` runs in the scene process, so `self()` there is the scene, and
+  events arrive at its `handle_event/2` as
+
+      {:ui_event, :board, :mouse, %{type: :down, u: 0.31, v: 0.62, ...}}
+      {:ui_event, :board, :resize, %{logical_size: {680, 666}, dpi_scale: 2.0, ...}}
+
+  `u` and `v` are the fraction across the surface rather than pixels, because
+  a hit test written against them survives a resize, and because a visual's
+  content coordinates are almost never its widget coordinates.
+
+  Note where the game logic then lives: in the scene's model, as ordinary MVU.
+  The visual is told what to draw; it does not own what is true. A visual that
+  tracked the selected square itself would put half the application's state
+  somewhere the model cannot see it.
+
   ## Implementing one
 
   Built-in visuals are referenced by atom, exactly as widgets are — `:image`,

@@ -18,10 +18,18 @@ defmodule WxMVU.Visual.Text do
   ## Options
 
     * `:font` - a bundled font atom or a path, default `:dejavu_sans`
-    * `:text` - initial string, otherwise sent as data
+    * `:text` - a string at `:origin`
+    * `:runs` - `[{{x, y}, string}, ...]`, several strings at several places
     * `:size` - em size in pixels, default `16.0`
-    * `:origin` - `{x, y}` of the text's top-left in pixels, default
-      `{0.0, 0.0}`
+    * `:origin` - `{x, y}` of the text's top-left, default `{0.0, 0.0}`
+
+  Positions and sizes are in **logical points**, the same units wx uses for
+  widget geometry, not physical pixels. On a HiDPI display the two differ by
+  the DPI scale, and using physical pixels would make a 14pt label render at
+  7pt on a Retina panel and text laid out against a widget's coordinates land
+  in the wrong place. The extra resolution is not thrown away - the glyphs are
+  rasterized at the physical size, which is exactly what the distance field is
+  for.
     * `:color` - `{r, g, b, a}`, default opaque white
     * `:line_height`, `:kerning` - passed through to `WxMVU.Font.layout/3`
 
@@ -30,10 +38,16 @@ defmodule WxMVU.Visual.Text do
   vertex buffer — which is the right way round, since the first happens per
   frame during an animation and the second happens when a value changes.
 
+  `:runs` is one draw call for many strings, which is what a set of axis tick
+  labels, a scoreboard or a board full of pieces actually is. Laying each one
+  out as its own visual would mean a program, a texture and a vertex buffer
+  per label.
+
   ## Data
 
-      {:text, string}   # replaces the string
-      :clear            # draws nothing
+      {:text, string}                    # replaces the string
+      {:runs, [{{x, y}, string}, ...]}   # replaces every run
+      :clear                             # draws nothing
 
   ## Blending
 
@@ -54,6 +68,7 @@ defmodule WxMVU.Visual.Text do
     :texture,
     :font,
     :text,
+    :runs,
     :size,
     :origin,
     :color,
@@ -96,6 +111,7 @@ defmodule WxMVU.Visual.Text do
         texture: texture,
         font: font,
         text: Keyword.get(opts, :text, ""),
+        runs: Keyword.get(opts, :runs),
         size: Keyword.get(opts, :size, 16.0) * 1.0,
         origin: Keyword.get(opts, :origin, {0.0, 0.0}),
         color: Keyword.get(opts, :color, {1.0, 1.0, 1.0, 1.0}),
@@ -118,6 +134,7 @@ defmodule WxMVU.Visual.Text do
       updated = %{
         state
         | text: Keyword.get(opts, :text, state.text),
+          runs: Keyword.get(opts, :runs, state.runs),
           size: Keyword.get(opts, :size, state.size) * 1.0,
           origin: Keyword.get(opts, :origin, state.origin),
           color: Keyword.get(opts, :color, state.color),
@@ -142,14 +159,18 @@ defmodule WxMVU.Visual.Text do
     end
   end
 
-  def handle_data(state, :clear), do: {:ok, rebuild(%{state | text: ""})}
+  def handle_data(state, {:runs, runs}) when is_list(runs) do
+    {:ok, rebuild(%{state | runs: runs})}
+  end
+
+  def handle_data(state, :clear), do: {:ok, rebuild(%{state | text: "", runs: nil})}
 
   def handle_data(state, _other), do: {:ok, state}
 
   @impl true
   def draw(state, frame) do
     if state.vertex_count > 0 do
-      {width, height} = frame.pixel_size
+      {width, height} = frame.logical_size
 
       GL.enable(:blend)
       GL.blend_func(:alpha)
@@ -159,7 +180,11 @@ defmodule WxMVU.Visual.Text do
       |> Program.set_block(:per_frame, %{
         color: state.color,
         viewport: {width * 1.0, height * 1.0},
-        px_range: Font.px_range(state.font, state.size)
+        # The glyph covers size * dpi_scale *physical* pixels even though it
+        # was positioned in logical ones, and the antialiasing width is a
+        # physical-pixel quantity. Dropping the scale here is why text looks
+        # soft on a Retina display in so many toolkits.
+        px_range: Font.px_range(state.font, state.size * (frame.dpi_scale || 1.0))
       })
 
       Texture.bind(state.texture, Program.texture_unit(state.program, :u_atlas))
@@ -195,7 +220,20 @@ defmodule WxMVU.Visual.Text do
   # ==========================================================================
 
   defp rebuild(state) do
-    %{quads: quads} = Font.layout(state.font, state.text, layout_opts(state))
+    quads =
+      case state.runs do
+        nil ->
+          Font.layout(state.font, state.text, layout_opts(state)).quads
+
+        runs ->
+          # Every run is laid out against its own origin and the quads are
+          # concatenated. They share one atlas, one program and one buffer, so
+          # the cost of the hundredth label is its glyphs and nothing else.
+          Enum.flat_map(runs, fn {origin, text} ->
+            Font.layout(state.font, text, Keyword.put(layout_opts(state), :origin, origin)).quads
+          end)
+      end
+
     vertices = Font.vertices(quads)
 
     %{
@@ -211,7 +249,7 @@ defmodule WxMVU.Visual.Text do
   end
 
   defp layout_changed?(before, later) do
-    Map.take(before, [:text, :size, :origin, :line_height, :kerning]) !=
-      Map.take(later, [:text, :size, :origin, :line_height, :kerning])
+    Map.take(before, [:text, :runs, :size, :origin, :line_height, :kerning]) !=
+      Map.take(later, [:text, :runs, :size, :origin, :line_height, :kerning])
   end
 end

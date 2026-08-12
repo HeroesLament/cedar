@@ -153,6 +153,8 @@ defmodule Mix.Tasks.WxMvu.Fonts.Build do
       to_string(font.width)
     ]
 
+    args = args ++ if font[:extra], do: ["--extra", font.extra], else: []
+
     unless File.exists?(font.source) do
       Mix.raise("font source #{font.source} not found")
     end

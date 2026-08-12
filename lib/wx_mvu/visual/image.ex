@@ -45,6 +45,21 @@ defmodule WxMVU.Visual.Image do
     * `:advance` - `:per_datum` (ring buffer) or `:none`, default `:none`
     * `:format` - texture format, default `:r32f`
     * `:fill` - initial value for every cell, default the domain minimum
+    * `:filter` - `:linear` (default) or `:nearest`
+    * `:data` - the whole field, as a declaration rather than as data
+
+  `:filter` is `:linear` because a waterfall wants its history smoothed across
+  the gaps between rows. Set it to `:nearest` when a cell is a *thing* rather
+  than a sample of a continuum - a chessboard square, a tile map, a confusion
+  matrix - where interpolating between neighbours invents a value that means
+  nothing.
+
+  `:data` is for a field that is a function of the model and changes at human
+  speed: a board position, a small heatmap recomputed on a control change. It
+  arrives through the differ, so it cannot race the visual into existence the
+  way a `send_data/2` can. Sample data at frame rate still belongs in
+  `{:row, ...}` or `{:grid, ...}`; see `WxMVU.Visual.Line` for the same split
+  argued at more length.
   """
 
   use WxMVU.Visual
@@ -92,13 +107,17 @@ defmodule WxMVU.Visual.Image do
       data =
         Texture.new(width, height,
           format: format,
-          filter: :linear,
+          filter: Keyword.get(opts, :filter, :linear),
           wrap_s: :clamp_to_edge,
           # Repeat on t, because the ring buffer's seam wraps.
           wrap_t: if(advance == :per_datum, do: :repeat, else: :clamp_to_edge)
         )
 
       Texture.fill(data, encode_fill(format, fill))
+
+      if declared = Keyword.get(opts, :data) do
+        upload_grid!(data, declared, grid, format)
+      end
 
       {:ok,
        %__MODULE__{
@@ -135,6 +154,14 @@ defmodule WxMVU.Visual.Image do
           Colormap.texture(colormap)
         end
 
+      # A declared field is re-uploaded whenever it is present, which for a
+      # keyword list built fresh by view/1 means every update. That is 64
+      # bytes for a chessboard and a few KB for a small heatmap - cheap enough
+      # that comparing first would cost more than it saves.
+      if declared = Keyword.get(opts, :data) do
+        upload_grid!(state.data, declared, state.grid, state.format)
+      end
+
       {:ok,
        %{
          state
@@ -164,16 +191,7 @@ defmodule WxMVU.Visual.Image do
   end
 
   def handle_data(state, {:grid, field}) when is_binary(field) do
-    {width, height} = state.grid
-    expected = width * height * state.data.bytes_per_pixel
-
-    if byte_size(field) != expected do
-      raise ArgumentError,
-            "a #{width}x#{height} #{state.format} grid is #{expected} bytes, " <>
-              "got #{byte_size(field)}"
-    end
-
-    Texture.upload(state.data, field)
+    upload_grid!(state.data, field, state.grid, state.format)
     {:ok, state}
   end
 
@@ -229,6 +247,18 @@ defmodule WxMVU.Visual.Image do
 
   defp fit(row, expected, _state), do: binary_part(row, 0, expected)
 
+  defp upload_grid!(texture, field, {width, height}, format) do
+    expected = width * height * texture.bytes_per_pixel
+
+    if byte_size(field) != expected do
+      raise ArgumentError,
+            "a #{width}x#{height} #{format} grid is #{expected} bytes, " <>
+              "got #{byte_size(field)}"
+    end
+
+    Texture.upload(texture, field)
+  end
+
   defp encode_fill(:r32f, value), do: <<value * 1.0::float-32-native>>
   defp encode_fill(:r8, value), do: <<trunc(value)::8>>
   defp encode_fill(:rgba8, {r, g, b, a}), do: <<r::8, g::8, b::8, a::8>>
@@ -243,7 +273,8 @@ defmodule WxMVU.Visual.Image do
         {w, h}
 
       {:ok, other} ->
-        raise ArgumentError, ":grid must be {width, height} of positive integers, got #{inspect(other)}"
+        raise ArgumentError,
+              ":grid must be {width, height} of positive integers, got #{inspect(other)}"
 
       :error ->
         raise ArgumentError, ":image requires a :grid, e.g. grid: {512, 256}"
