@@ -136,7 +136,13 @@ defmodule WxMVU.Visual.Host do
   def render(host) do
     {r, g, b, a} = host.clear
     GL.clear_color(r, g, b, a)
+
+    # Colour *and* depth. A visual that draws 3D geometry leaves depth values
+    # behind, and without clearing them the second frame is tested against the
+    # first - so the model renders correctly once and then progressively eats
+    # itself. Harmless on a canvas with no depth attachment.
     GL.clear(:color)
+    GL.clear(:depth)
 
     frame = %Frame{
       pixel_size: host.ctx.pixel_size,

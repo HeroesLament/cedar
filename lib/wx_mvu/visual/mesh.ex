@@ -25,7 +25,13 @@ defmodule WxMVU.Visual.Mesh do
     * `:base_color` — `{r, g, b, a}`, default a warm grey
     * `:light_direction` — direction *towards* the light in world space,
       normalized for you, default over the viewer's left shoulder
-    * `:mesh` — initial geometry, otherwise sent as data
+    * `:mesh` — geometry, as a declaration rather than as data
+
+  A declared mesh is compared against the last one and only re-uploaded when
+  it differs, because unlike a colour or a camera angle the geometry is the
+  expensive thing here and `view/1` may well run every frame. Send it with
+  `send_data/2` instead when it changes at frame rate — see
+  `WxMVU.Visual.Line` for the same split argued at more length.
     * `:depth_test` — default `true`; turn it off for wireframe overlays
 
   Every one of these is a live uniform. Orbiting the camera writes 144 bytes;
@@ -67,6 +73,7 @@ defmodule WxMVU.Visual.Mesh do
     :base_color,
     :light_direction,
     :depth_test,
+    :declared_mesh,
     index_count: 0
   ]
 
@@ -122,6 +129,7 @@ defmodule WxMVU.Visual.Mesh do
          base_color: Keyword.get(opts, :base_color, {0.75, 0.75, 0.78, 1.0}),
          light_direction: Math.normalize(Keyword.get(opts, :light_direction, {-0.4, 0.8, 0.5})),
          depth_test: Keyword.get(opts, :depth_test, true),
+         declared_mesh: mesh,
          index_count: div(byte_size(indices), 4)
        }}
     end
@@ -129,6 +137,22 @@ defmodule WxMVU.Visual.Mesh do
 
   @impl true
   def update(state, opts) do
+    state =
+      case Keyword.fetch(opts, :mesh) do
+        {:ok, mesh} when mesh != state.declared_mesh ->
+          {vertices, indices} = build(mesh)
+
+          %{
+            state
+            | geometry: Geometry.replace(state.geometry, vertices, indices),
+              declared_mesh: mesh,
+              index_count: div(byte_size(indices), 4)
+          }
+
+        _unchanged ->
+          state
+      end
+
     light =
       case Keyword.fetch(opts, :light_direction) do
         {:ok, direction} -> Math.normalize(direction)
