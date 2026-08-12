@@ -1,0 +1,19 @@
+[package]
+name = "wx-mvu-atlas"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Deliberately outside the shaders/ workspace. That workspace is pinned to the
+# rust-gpu nightly; this tool must stay on stable, and a shared workspace would
+# eventually see one dragged into the other.
+
+[dependencies]
+# Pure-Rust font rasterizer: no FreeType, no C, no build script that shells out
+# to a system library. That matters even for a maintainer tool, because "do not
+# add C" applies to the whole repository and a C dependency here would be the
+# thin end of it.
+fontdue = "0.9"
+
+[profile.release]
+opt-level = 3

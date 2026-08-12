@@ -264,6 +264,26 @@ pub fn lambert_intensity(n_dot_l: f32, ambient: f32) -> f32 {
     ambient + (1.0 - ambient) * diffuse
 }
 
+/// Antialiased coverage for a signed distance field sample.
+///
+/// `distance` is the sampled field value, where `0.5` is exactly on the glyph
+/// outline, above is inside, below is outside. `px_range` is how many *screen*
+/// pixels the field's full `0.0..1.0` range spans at the size being drawn.
+///
+/// The result is a box-filter coverage estimate: the fraction of a one-pixel
+/// square the glyph covers, assuming the edge is locally straight. That is the
+/// same model `grid_line_alpha` uses, and for the same reason - a linear ramp
+/// across the pixel makes hairlines and small text vanish rather than merely
+/// soften, because the ramp never reaches full coverage on a feature narrower
+/// than one pixel.
+///
+/// A `px_range` of zero - which a caller reaches by drawing text at size zero -
+/// yields a hard threshold rather than a division by zero.
+#[inline]
+pub fn sdf_coverage(distance: f32, px_range: f32) -> f32 {
+    clamp_unit((distance - 0.5) * px_range + 0.5)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -537,6 +557,54 @@ mod tests {
     #[test]
     fn perpendicular2_survives_degenerate_input() {
         assert_eq!(perpendicular2(0.0, 0.0), (0.0, 0.0));
+    }
+
+    #[test]
+    fn sdf_coverage_is_half_on_the_outline() {
+        // The defining property: the stored 0.5 contour *is* the glyph edge,
+        // at every scale.
+        for range in [0.5, 1.0, 4.0, 64.0] {
+            assert!((sdf_coverage(0.5, range) - 0.5).abs() < 1.0e-6);
+        }
+    }
+
+    #[test]
+    fn sdf_coverage_saturates_well_inside_and_outside() {
+        assert_eq!(sdf_coverage(1.0, 8.0), 1.0);
+        assert_eq!(sdf_coverage(0.0, 8.0), 0.0);
+    }
+
+    #[test]
+    fn sdf_coverage_stays_in_range() {
+        let samples = [-1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 2.0];
+
+        for d in samples {
+            for range in [0.0, 0.1, 1.0, 1000.0] {
+                let a = sdf_coverage(d, range);
+                assert!((0.0..=1.0).contains(&a), "sdf_coverage({d}, {range}) = {a}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_larger_range_sharpens_the_edge() {
+        // Same distance, further from the outline in screen terms, so closer
+        // to saturation. This is what makes large text crisp and small text
+        // soft from one atlas.
+        let near_edge = 0.55;
+
+        let soft = sdf_coverage(near_edge, 2.0);
+        let sharp = sdf_coverage(near_edge, 20.0);
+
+        assert!(sharp > soft, "{soft} -> {sharp}");
+        assert_eq!(sharp, 1.0);
+    }
+
+    #[test]
+    fn a_zero_range_is_a_hard_threshold_not_a_division() {
+        // Reachable by drawing text at size zero.
+        assert_eq!(sdf_coverage(0.9, 0.0), 0.5);
+        assert!(sdf_coverage(0.1, 0.0).is_finite());
     }
 
     #[test]

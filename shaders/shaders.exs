@@ -87,6 +87,19 @@
       samplers: %{}
     },
     %{
+      name: "text",
+      crate: "text",
+      entry_points: [vert: "main_vs", frag: "main_fs"],
+      block: %{
+        name: "TextUniforms",
+        # vec4 (16) + vec2 (8) + f32 (4) = 28, rounded to 32.
+        fields: [:color, :viewport, :px_range]
+      },
+      samplers: %{
+        1 => "u_atlas"
+      }
+    },
+    %{
       name: "mesh",
       crate: "mesh",
       entry_points: [vert: "main_vs", frag: "main_fs"],

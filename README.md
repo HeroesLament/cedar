@@ -72,6 +72,7 @@ Built-in visuals are named by atom, exactly as widgets are:
 | `:line` | polylines with a width in pixels — traces, scope sweeps, axis rules |
 | `:grid` | analytic antialiased gridlines |
 | `:mesh` | lit triangle geometry with a camera — the 3D viewport |
+| `:text` | strings from a distance field atlas, crisp at any size |
 
 A 3D viewport is the same shape of declaration, with a camera instead of a
 colormap:
@@ -91,6 +92,20 @@ Orbiting that camera changes two tuples in the model; the differ turns it into
 a 144-byte uniform write, and the mesh on the GPU is not touched. `WxMVU.Math`
 supplies the matrices — column-major, degrees, right-handed — if you want to
 build a transform yourself.
+
+Labels are the same shape again, and need nothing installed:
+
+```elixir
+{:ensure_visual, :readout, :text, :root,
+  text: "Joint 3: 47.2°",
+  size: 14.0,
+  origin: {12.0, 12.0}}
+```
+
+One atlas serves every size — the glyph is stored as a distance to its outline
+rather than as coverage, so a 200pt title and an 8px axis label come from the
+same 25 KB file. `WxMVU.Font.measure/3` sizes a control around a string without
+drawing it.
 
 Your own visual implements `WxMVU.Visual` and is referenced by module, matching
 how `:ensure_gl_canvas` takes one:
@@ -119,6 +134,15 @@ none of them appears in your dependency graph.
 Applications do not write GLSL either. If you are adding a shader to wx_mvu
 itself, see `shaders/README.md` for the build commands and the OpenGL 4.1
 constraints the source has to respect.
+
+## Fonts
+
+`:text` draws from a signed distance field atlas baked the same way and for the
+same reason: a maintainer tool produces it, the result is committed under
+`priv/fonts`, and applications need no font file, no rasterizer and no image
+decoder. See `fonts/README.md`.
+
+DejaVu Sans ships as the default. Its licence travels with it in the package.
 
 ---
 

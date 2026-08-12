@@ -147,11 +147,12 @@ defmodule WxMVU.Visual do
   def resolve(:line), do: WxMVU.Visual.Line
   def resolve(:grid), do: WxMVU.Visual.Grid
   def resolve(:mesh), do: WxMVU.Visual.Mesh
+  def resolve(:text), do: WxMVU.Visual.Text
 
   def resolve(other) do
     raise ArgumentError,
           "unknown visual #{inspect(other)}. Built-in visuals: " <>
-            "[:image, :line, :grid, :mesh]. For your own, use :custom with " <>
+            "[:image, :line, :grid, :mesh, :text]. For your own, use :custom with " <>
             "module: YourModule."
   end
 end
