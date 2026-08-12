@@ -1,0 +1,13 @@
+[package]
+name = "wx-mvu-shader-image"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# `lib` so the crate also builds for the host (enabling `cargo test` of the
+# pure math functions and rust-analyzer support); `dylib` for the SPIR-V build.
+[lib]
+crate-type = ["lib", "dylib"]
+
+[dependencies]
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu" }

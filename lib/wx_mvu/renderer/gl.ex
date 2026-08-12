@@ -277,8 +277,19 @@ defmodule WxMVU.Renderer.GL do
   # The driver's own std140 size for a block. Comparing this against a
   # host-computed size is what makes hand-written packing safe.
   def get_active_uniform_block_data_size(program, block_index) do
-    :gl.getActiveUniformBlockiv(program, block_index, OpenGL.gl_UNIFORM_BLOCK_DATA_SIZE(), 1)
-    |> scalar()
+    # Erlang's :gl returns array-valued queries through a wx memory object
+    # rather than as a return value.
+    buffer = :wx.create_memory(4)
+
+    :gl.getActiveUniformBlockiv(
+      program,
+      block_index,
+      OpenGL.gl_UNIFORM_BLOCK_DATA_SIZE(),
+      buffer
+    )
+
+    <<size::native-integer-32, _rest::binary>> = :wx.get_memory_bin(buffer)
+    size
   end
 
   # ============================================================================
