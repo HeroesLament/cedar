@@ -22,3 +22,17 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 wx_mvu-*.tar
 
+
+# rust-gpu shader build artifacts (generated GLSL in priv/shaders IS committed)
+shaders/out/
+shaders/target/
+# shaders/Cargo.lock is deliberately committed: it records the exact rust-gpu
+# revision that produced the GLSL in priv/shaders/.
+
+# Font atlas baking. The baked artifact under priv/fonts is committed;
+# these are the intermediates that produce it.
+/tools/atlas/target/
+/fonts/out/
+
+# macOS Finder droppings
+.DS_Store

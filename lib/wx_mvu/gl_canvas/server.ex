@@ -67,11 +67,16 @@ defmodule WxMVU.GLCanvas.Server do
     # Set wx environment in this process
     :wx.set_env(wx_env)
 
-    # Initialize GL NIF in this process (required on macOS 26+)
-    try do
-      :gl.init_nif()
-    catch
-      _, _ -> :ok
+    # Initialize the GL NIF in this process where that entry point exists.
+    # Absent on OTP 29 / wx-2.6, where the NIF initialises itself.
+    Code.ensure_loaded(:gl)
+
+    if function_exported?(:gl, :init_nif, 0) do
+      try do
+        apply(:gl, :init_nif, [])
+      catch
+        _, _ -> :ok
+      end
     end
 
     # Register for data routing
@@ -266,6 +271,7 @@ defmodule WxMVU.GLCanvas.Server do
     pixel_h = trunc(logical_h * dpi_scale)
 
     Logger.debug("GLCanvas.Server: OpenGL #{gl_major}.#{gl_minor}, GLSL #{glsl_version}")
+    warn_unless_supported({gl_major, gl_minor})
 
     %Context{
       gl_version: {gl_major, gl_minor},
@@ -278,16 +284,32 @@ defmodule WxMVU.GLCanvas.Server do
     }
   end
 
+  # GL_MAJOR_VERSION / GL_MINOR_VERSION are themselves OpenGL 3.0+ queries. On a
+  # legacy context they do not raise - they return uninitialised memory, so no
+  # rescue can catch them and the old fallback to {4, 1} never fired. Observed
+  # values on a 2.1 context: -104284064 and 1402814560 across two runs.
+  #
+  # The GL_VERSION string is available on every profile and every version, and
+  # its first two components are the version by specification.
   defp get_gl_version do
+    parse_gl_version(get_version_string())
+  end
+
+  defp get_version_string do
     alias WxEx.Constants.OpenGL
-    # getIntegerv returns a list, first element is the value we want
-    [major | _] = :gl.getIntegerv(OpenGL.gl_MAJOR_VERSION())
-    [minor | _] = :gl.getIntegerv(OpenGL.gl_MINOR_VERSION())
-    {major, minor}
+    :gl.getString(OpenGL.gl_VERSION()) |> to_string()
   rescue
-    _ -> {4, 1}
+    _ -> ""
   catch
-    _, _ -> {4, 1}
+    _, _ -> ""
+  end
+
+  # "4.1 Metal - 90.5", "4.6.0 NVIDIA 550.54.14", "2.1 Metal - 90.5"
+  defp parse_gl_version(string) do
+    case Regex.run(~r/^\s*(\d+)\.(\d+)/, string) do
+      [_, major, minor] -> {String.to_integer(major), String.to_integer(minor)}
+      _ -> {0, 0}
+    end
   end
 
   defp get_glsl_version do
@@ -297,6 +319,26 @@ defmodule WxMVU.GLCanvas.Server do
     _ -> "4.10"
   catch
     _, _ -> "4.10"
+  end
+
+  # wx_mvu ships GLSL 410 shaders, so anything below 4.1 cannot run them. The
+  # symptom is otherwise a wall of "version '410' is not supported" syntax
+  # errors from the driver, which does not point at the cause.
+  defp warn_unless_supported({major, _minor}) when major >= 4, do: :ok
+
+  defp warn_unless_supported({0, 0}) do
+    Logger.warning(
+      "GLCanvas.Server: could not determine the OpenGL version. If shaders fail " <>
+        "to compile, check the attribList in Renderer.Intents.GLCanvas."
+    )
+  end
+
+  defp warn_unless_supported({major, minor}) do
+    Logger.warning(
+      "GLCanvas.Server: got an OpenGL #{major}.#{minor} context, but wx_mvu " <>
+        "shaders require 4.1 core. Shader compilation will fail. The core " <>
+        "profile is requested via attribList in Renderer.Intents.GLCanvas."
+    )
   end
 
   defp get_canvas_size(wx_canvas) do
@@ -322,7 +364,10 @@ defmodule WxMVU.GLCanvas.Server do
       max_vertex_attribs: 16,
       max_uniform_locations: 1024,
       max_renderbuffer_size: 16384,
-      max_viewport_dims: {16384, 16384}
+      max_viewport_dims: {16384, 16384},
+      max_uniform_block_size: 16384,
+      max_uniform_buffer_bindings: 36,
+      uniform_buffer_offset_alignment: 256
     }
   end
 
@@ -333,9 +378,17 @@ defmodule WxMVU.GLCanvas.Server do
       max_texture_size: get_integer(OpenGL.gl_MAX_TEXTURE_SIZE()),
       max_texture_units: get_integer(OpenGL.gl_MAX_TEXTURE_IMAGE_UNITS()),
       max_vertex_attribs: get_integer(OpenGL.gl_MAX_VERTEX_ATTRIBS()),
+      # GL_MAX_UNIFORM_LOCATIONS is GL 4.3+. macOS caps at 4.1, so this query
+      # fails there and reports 0. Kept for platforms that do support it.
       max_uniform_locations: get_integer(OpenGL.gl_MAX_UNIFORM_LOCATIONS()),
       max_renderbuffer_size: get_integer(OpenGL.gl_MAX_RENDERBUFFER_SIZE()),
-      max_viewport_dims: get_integer_pair(OpenGL.gl_MAX_VIEWPORT_DIMS())
+      max_viewport_dims: get_integer_pair(OpenGL.gl_MAX_VIEWPORT_DIMS()),
+      # Uniform buffer limits. The offset alignment constrains where a
+      # bind_buffer_range sub-range may start, and is commonly 256.
+      max_uniform_block_size: get_integer(OpenGL.gl_MAX_UNIFORM_BLOCK_SIZE()),
+      max_uniform_buffer_bindings: get_integer(OpenGL.gl_MAX_UNIFORM_BUFFER_BINDINGS()),
+      uniform_buffer_offset_alignment:
+        get_integer(OpenGL.gl_UNIFORM_BUFFER_OFFSET_ALIGNMENT())
     }
   rescue
     _ -> default_capabilities()

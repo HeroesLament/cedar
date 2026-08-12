@@ -41,7 +41,7 @@ defmodule WxMVU.Renderer do
 
   @impl true
   def init(:ok) do
-    wx = :wx.new()
+    wx = new_wx!()
 
     # Initialize OpenGL NIF - required on macOS 26+ where on_load doesn't work automatically
     init_opengl_nif()
@@ -89,7 +89,10 @@ defmodule WxMVU.Renderer do
   end
 
   def handle_info({:wx, _, source, _user_data, event}, state) do
-    Logger.debug("Renderer wx event (with user_data): source=#{inspect(source)} event=#{inspect(event)}")
+    Logger.debug(
+      "Renderer wx event (with user_data): source=#{inspect(source)} event=#{inspect(event)}"
+    )
+
     handle_wx_event(source, event, state)
   end
 
@@ -163,58 +166,58 @@ defmodule WxMVU.Renderer do
     {:wx_resize, logical_size, pixel_size, dpi_scale}
   end
 
-  # Mouse move
-  defp translate_gl_canvas_event(_source, {:wxMouse, :motion, x, y, _, _, _, _, _, _, _, _}) do
-    {:wx_mouse, :move, x, y, nil, nil, []}
-  end
+  # Mouse events, positionally rather than by shape.
+  #
+  # The `wxMouse` record has grown: this wx build sends fourteen elements
+  # (three trailing wheel fields) where the twelve-element form was written
+  # against. Matching the whole tuple therefore silently stopped matching, and
+  # since nothing in the library used canvas input until now, every click has
+  # been quietly falling through to "unhandled" - the widgets kept working, so
+  # there was nothing to notice.
+  #
+  # Reading by index is the fix that survives the next field being added.
+  defp translate_gl_canvas_event(_source, event)
+       when is_tuple(event) and elem(event, 0) == :wxMouse and tuple_size(event) >= 12 do
+    type = elem(event, 1)
+    x = elem(event, 2)
+    y = elem(event, 3)
+    ctrl = elem(event, 7)
+    shift = elem(event, 8)
+    alt = elem(event, 9)
+    meta = elem(event, 10)
+    wheel_rotation = elem(event, 11)
 
-  # Mouse button down
-  defp translate_gl_canvas_event(_source, {:wxMouse, :left_down, x, y, left, middle, right, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :down, x, y, :left, nil, modifiers(ctrl, shift, alt, meta)}
-  end
+    modifiers = modifiers(ctrl, shift, alt, meta)
 
-  defp translate_gl_canvas_event(_source, {:wxMouse, :middle_down, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :down, x, y, :middle, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  defp translate_gl_canvas_event(_source, {:wxMouse, :right_down, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :down, x, y, :right, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  # Mouse button up
-  defp translate_gl_canvas_event(_source, {:wxMouse, :left_up, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :up, x, y, :left, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  defp translate_gl_canvas_event(_source, {:wxMouse, :middle_up, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :up, x, y, :middle, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  defp translate_gl_canvas_event(_source, {:wxMouse, :right_up, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :up, x, y, :right, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  # Mouse wheel
-  defp translate_gl_canvas_event(_source, {:wxMouse, :mousewheel, x, y, _, _, _, ctrl, shift, alt, meta, wheel_rotation}) do
-    {:wx_mouse, :wheel, x, y, nil, wheel_rotation, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  # Mouse enter/leave
-  defp translate_gl_canvas_event(_source, {:wxMouse, :enter_window, x, y, _, _, _, _, _, _, _, _}) do
-    {:wx_mouse, :enter, x, y, nil, nil, []}
-  end
-
-  defp translate_gl_canvas_event(_source, {:wxMouse, :leave_window, x, y, _, _, _, _, _, _, _, _}) do
-    {:wx_mouse, :leave, x, y, nil, nil, []}
+    case type do
+      :motion -> {:wx_mouse, :move, x, y, nil, nil, []}
+      :left_down -> {:wx_mouse, :down, x, y, :left, nil, modifiers}
+      :middle_down -> {:wx_mouse, :down, x, y, :middle, nil, modifiers}
+      :right_down -> {:wx_mouse, :down, x, y, :right, nil, modifiers}
+      :left_up -> {:wx_mouse, :up, x, y, :left, nil, modifiers}
+      :middle_up -> {:wx_mouse, :up, x, y, :middle, nil, modifiers}
+      :right_up -> {:wx_mouse, :up, x, y, :right, nil, modifiers}
+      :left_dclick -> {:wx_mouse, :double_click, x, y, :left, nil, modifiers}
+      :mousewheel -> {:wx_mouse, :wheel, x, y, nil, wheel_rotation, modifiers}
+      :enter_window -> {:wx_mouse, :enter, x, y, nil, nil, []}
+      :leave_window -> {:wx_mouse, :leave, x, y, nil, nil, []}
+      _other -> nil
+    end
   end
 
   # Key events
-  defp translate_gl_canvas_event(_source, {:wxKey, :key_down, keycode, _, ctrl, shift, alt, meta, unicode_char, _raw}) do
+  defp translate_gl_canvas_event(
+         _source,
+         {:wxKey, :key_down, keycode, _, ctrl, shift, alt, meta, unicode_char, _raw}
+       ) do
     char = if unicode_char > 0, do: <<unicode_char::utf8>>, else: nil
     {:wx_key, :down, keycode, char, modifiers(ctrl, shift, alt, meta)}
   end
 
-  defp translate_gl_canvas_event(_source, {:wxKey, :key_up, keycode, _, ctrl, shift, alt, meta, unicode_char, _raw}) do
+  defp translate_gl_canvas_event(
+         _source,
+         {:wxKey, :key_up, keycode, _, ctrl, shift, alt, meta, unicode_char, _raw}
+       ) do
     char = if unicode_char > 0, do: <<unicode_char::utf8>>, else: nil
     {:wx_key, :up, keycode, char, modifiers(ctrl, shift, alt, meta)}
   end
@@ -265,21 +268,81 @@ defmodule WxMVU.Renderer do
   ## ------------------------------------------------------------------
 
   defp init_opengl_nif do
-    # On macOS 26+, the gl module's on_load doesn't fire automatically.
-    # We need to explicitly initialize the NIF before using any GL functions.
-    try do
-      :gl.init_nif()
-      :wxe_master.init_opengl()
-      Logger.debug("Renderer: OpenGL NIF initialized")
-    catch
-      _, _ ->
-        Logger.warning("Renderer: OpenGL NIF initialization failed - GL canvases may not work")
-    end
+    # On some macOS/wx combinations the gl module's on_load does not fire
+    # automatically and the NIF must be initialised explicitly.
+    #
+    # Both entry points are version-dependent: :gl.init_nif/0 does not exist on
+    # OTP 29 / wx-2.6, where the NIF initialises itself. Its absence is normal,
+    # not a failure, so it is gated rather than caught - the previous version
+    # warned on every startup and, worse, the raised UndefinedFunctionError
+    # meant :wxe_master.init_opengl/0 on the following line never ran at all.
+    #
+    # apply/3 keeps the compiler from warning about a function that legitimately
+    # may not exist.
+    Enum.each([{:gl, :init_nif}, {:wxe_master, :init_opengl}], fn {module, function} ->
+      Code.ensure_loaded(module)
+
+      if function_exported?(module, function, 0) do
+        try do
+          apply(module, function, [])
+          Logger.debug("Renderer: #{inspect(module)}.#{function}/0 ok")
+        catch
+          kind, reason ->
+            Logger.warning(
+              "Renderer: #{inspect(module)}.#{function}/0 failed " <>
+                "(#{inspect(kind)}: #{inspect(reason)}) - GL canvases may not work"
+            )
+        end
+      else
+        Logger.debug(
+          "Renderer: #{inspect(module)}.#{function}/0 not present on this OTP, skipping"
+        )
+      end
+    end)
   end
 
   defp detect_mode do
     {r, g, b, _a} = :wxSystemSettings.getColour(5)
     avg = div(r + g + b, 3)
     if avg > 128, do: :light, else: :dark
+  end
+
+  # `:wx.new/0` raises {:load_driver, ~c"No driver found"} when the Erlang
+  # install was built without wxWidgets. That message says nothing about the
+  # cause and is the first thing a new user hits on a machine whose OTP came
+  # from a source build or a minimal package, so it is worth translating once
+  # here rather than being answered repeatedly in an issue tracker.
+  defp new_wx! do
+    :wx.new()
+  rescue
+    e in ErlangError ->
+      case e.original do
+        {:load_driver, _} ->
+          reraise """
+                  wxWidgets is not available in this Erlang install.
+
+                  wx_mvu needs an Erlang/OTP built with wxWidgets support, and
+                  `:wx.new()` could not load its driver. This is a property of
+                  how Erlang was built, not of your project.
+
+                  Erlang #{System.otp_release()}, wx #{wx_vsn()}.
+
+                  With asdf or kerl, rebuild Erlang with wx present first - on
+                  macOS `brew install wxwidgets`, on Debian/Ubuntu
+                  `apt install libwxgtk3.2-dev`. A prebuilt Erlang from a
+                  distribution package usually already has it.
+                  """,
+                  __STACKTRACE__
+
+        _other ->
+          reraise e, __STACKTRACE__
+      end
+  end
+
+  defp wx_vsn do
+    case Application.spec(:wx, :vsn) do
+      nil -> "not loaded"
+      vsn -> to_string(vsn)
+    end
   end
 end
