@@ -10,6 +10,38 @@ MVU-based wxWidgets GUIs with integrated OpenGL rendering.
 
 ---
 
+## Requirements
+
+* **Erlang/OTP built with wxWidgets.** This is the one thing that trips people
+  up. A distribution's Erlang package normally has it; an Erlang built from
+  source on a machine without the wxWidgets headers silently does not, and
+  `:wx.new()` then fails with `{:load_driver, 'No driver found'}`. Install
+  wxWidgets (`brew install wxwidgets`, `apt install libwxgtk3.2-dev`) and
+  rebuild Erlang.
+* **OpenGL 4.1.** That is the ceiling macOS offers and the target everything
+  here is compiled against, so it is the floor elsewhere too.
+* **No Rust, and no font tooling.** The shaders and the font atlas are
+  compiled ahead of time and committed; see [Shaders](#shaders) and
+  [Fonts](#fonts).
+
+Developed against Erlang 28 and Elixir 1.19 on macOS.
+
+## Try it
+
+```sh
+git clone https://github.com/HeroesLament/wx_mvu
+cd wx_mvu
+mix deps.get
+mix run examples/chess.exs
+```
+
+A chess board you push pieces around by clicking. No rules and no opponent —
+the point is that the whole thing is a pure function from a model to a
+declaration, with no GLSL, no buffers and no rendering code. See
+[`examples/`](examples/).
+
+---
+
 ## Overview
 
 WxMvu is a Model–View–Update framework for building native desktop applications
