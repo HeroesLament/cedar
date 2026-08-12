@@ -487,9 +487,14 @@ defmodule ChessDemo do
           c = (ring + 1) * segments + next
           d = (ring + 1) * segments + s
 
-          # Wound counter-clockwise seen from outside, which is what makes the
-          # computed normals point away from the axis rather than into it.
-          [{a, b, c}, {a, c, d} | acc]
+          # Around the quad a -> d -> c -> b, which is counter-clockwise seen
+          # from *outside* the surface. The other order is the easy mistake
+          # and it does not fail loudly: the geometry is identical, the
+          # normals simply point into the axis instead of away from it, so
+          # every face turns away from the light and the whole piece renders
+          # at the ambient floor - a black silhouette that still has a
+          # shape.
+          [{a, d, c}, {a, c, b} | acc]
       end
 
     %{positions: positions, indices: indices}
