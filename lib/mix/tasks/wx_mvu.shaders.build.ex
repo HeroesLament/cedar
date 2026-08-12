@@ -41,8 +41,6 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
 
   alias WxMVU.Shaders.Rewriter
 
-  @target "spirv-unknown-vulkan1.1"
-  @profile "core410"
 
   @impl Mix.Task
   def run(_args) do
@@ -59,11 +57,24 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
 
     File.mkdir_p!(priv_dir)
 
-    workspace
-    |> read_manifest()
-    |> Enum.each(&build_shader(&1, workspace, out_dir, priv_dir))
+    manifest = read_manifest(workspace)
 
-    Mix.shell().info("\nDone. Now run: mix run scripts/verify_shaders.exs")
+    Mix.shell().info(
+      "rust-gpu #{String.slice(manifest.rust_gpu.rev, 0, 8)} " <>
+        "on #{manifest.rust_gpu.toolchain}, target #{manifest.target}"
+    )
+
+    Enum.each(
+      manifest.shaders,
+      &build_shader(&1, manifest, workspace, out_dir, priv_dir)
+    )
+
+    Mix.shell().info(
+      "\nDone. Now run:\n" <>
+        "  mix wx_mvu.shaders.test              # host-side shader math\n" <>
+        "  mix run scripts/verify_shaders.exs   # links on the local driver\n" <>
+        "  mix run scripts/golden_image.exs     # renders correctly"
+    )
   end
 
   # ==========================================================================
@@ -79,9 +90,12 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
     manifest
   end
 
-  defp build_shader(shader, workspace, out_dir, priv_dir) do
+  defp build_shader(shader, manifest, workspace, out_dir, priv_dir) do
     Mix.shell().info("\n== #{shader.name}")
 
+    # --spirv-builder-source/-version pin the codegen backend to the same
+    # revision the shader crate depends on. Without them cargo-gpu resolves
+    # whatever `main` happens to be, which can disagree with Cargo.lock.
     cmd!(
       "cargo-gpu",
       [
@@ -89,9 +103,13 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
         "--shader-crate",
         "./#{shader.crate}",
         "--target",
-        @target,
+        manifest.target,
         "--spirv-metadata",
         "name-variables",
+        "--spirv-builder-source",
+        manifest.rust_gpu.source,
+        "--spirv-builder-version",
+        manifest.rust_gpu.rev,
         "-o",
         "./out"
       ],
@@ -110,7 +128,11 @@ defmodule Mix.Tasks.WxMvu.Shaders.Build do
     sources =
       Map.new(shader.entry_points, fn {stage, entry_point} ->
         target = Path.join(out_dir, "#{shader.name}.#{stage}")
-        cmd!("naga", ["--entry-point", entry_point, "--profile", @profile, spv, target], workspace)
+        cmd!(
+          "naga",
+          ["--entry-point", entry_point, "--profile", manifest.profile, spv, target],
+          workspace
+        )
         {stage, File.read!(target)}
       end)
 
