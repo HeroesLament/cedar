@@ -85,6 +85,19 @@
         fields: [:line_color, :background, :spacing, :thickness]
       },
       samplers: %{}
+    },
+    %{
+      name: "mesh",
+      crate: "mesh",
+      entry_points: [vert: "main_vs", frag: "main_fs"],
+      block: %{
+        name: "MeshUniforms",
+        # mat4 (64) + mat3 (48, not 36) + vec3 (12, then 4 bytes of padding)
+        # + vec4 = 144 bytes. The largest and most alignment-sensitive block
+        # in the set.
+        fields: [:mvp, :normal_matrix, :light_direction, :base_color]
+      },
+      samplers: %{}
     }
   ]
 }

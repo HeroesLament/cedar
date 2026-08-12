@@ -197,7 +197,8 @@ Verify.section("std140")
 expected_layouts = [
   {"image", [row_offset: :f32, domain_min: :f32, domain_max: :f32]},
   {"line", [color: :vec4, viewport: :vec2, line_width: :f32]},
-  {"grid", [line_color: :vec4, background: :vec4, spacing: :vec2, thickness: :f32]}
+  {"grid", [line_color: :vec4, background: :vec4, spacing: :vec2, thickness: :f32]},
+  {"mesh", [mvp: :mat4, normal_matrix: :mat3, light_direction: :vec3, base_color: :vec4]}
 ]
 
 for {name, fields} <- expected_layouts do
