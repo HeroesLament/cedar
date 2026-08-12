@@ -12,6 +12,7 @@ defmodule WxMVU.Visual.Host do
 
   use WxMVU.GLCanvas
 
+  alias WxMVU.GLCanvas.Event.Mouse
   alias WxMVU.Renderer.GL
   alias WxMVU.Visual.Frame
 
@@ -20,13 +21,24 @@ defmodule WxMVU.Visual.Host do
     module = Keyword.fetch!(opts, :visual)
     visual_opts = Keyword.fetch!(opts, :visual_opts)
     clear = Keyword.get(opts, :clear, {0.0, 0.0, 0.0, 1.0})
+    id = Keyword.get(opts, :visual_id)
+    notify = Keyword.get(opts, :notify)
 
     {width, height} = ctx.pixel_size
     GL.viewport(0, 0, width, height)
 
     case module.init(ctx, visual_opts) do
       {:ok, visual} ->
-        {:ok, %{module: module, visual: visual, opts: visual_opts, ctx: ctx, clear: clear}}
+        {:ok,
+         %{
+           module: module,
+           visual: visual,
+           opts: visual_opts,
+           ctx: ctx,
+           clear: clear,
+           id: id,
+           notify: notify
+         }}
 
       {:error, reason} ->
         {:error, reason}
@@ -44,10 +56,54 @@ defmodule WxMVU.Visual.Host do
         dpi_scale: event.dpi_scale
     }
 
+    if is_pid(host.notify) do
+      # A scene laying content out in surface coordinates needs the surface
+      # size, and it is the one thing view/1 cannot derive from the model.
+      # Reporting it makes the size part of the model like anything else.
+      send(
+        host.notify,
+        {:ui_event, host.id, :resize,
+         %{
+           pixel_size: event.pixel_size,
+           logical_size: event.logical_size,
+           dpi_scale: event.dpi_scale
+         }}
+      )
+    end
+
     {:noreply, %{host | ctx: ctx}}
   end
 
+  def handle_event(%Mouse{} = event, %{notify: pid} = host) when is_pid(pid) do
+    {width, height} = host.ctx.pixel_size
+    scale = host.ctx.dpi_scale || 1.0
+
+    # Both forms, because callers need different ones and neither is
+    # reconstructible from the other without knowing the DPI scale: `x`/`y` are
+    # wx's logical pixels, which is what a hit test against a widget layout
+    # wants, and `u`/`v` are the fraction across the surface, which is what a
+    # hit test against *content* wants and which survives a resize.
+    payload = %{
+      type: event.type,
+      button: event.button,
+      x: event.x,
+      y: event.y,
+      u: clamp_unit(event.x * scale / max(width, 1)),
+      v: clamp_unit(event.y * scale / max(height, 1)),
+      wheel_delta: event.wheel_delta,
+      modifiers: event.modifiers,
+      pixel_size: host.ctx.pixel_size
+    }
+
+    send(pid, {:ui_event, host.id, :mouse, payload})
+    {:noreply, host}
+  end
+
   def handle_event(_event, host), do: {:noreply, host}
+
+  defp clamp_unit(t) when t < 0.0, do: 0.0
+  defp clamp_unit(t) when t > 1.0, do: 1.0
+  defp clamp_unit(t), do: t
 
   @impl true
   def handle_data({:visual_update, opts}, host) do

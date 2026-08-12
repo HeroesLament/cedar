@@ -89,7 +89,10 @@ defmodule WxMVU.Renderer do
   end
 
   def handle_info({:wx, _, source, _user_data, event}, state) do
-    Logger.debug("Renderer wx event (with user_data): source=#{inspect(source)} event=#{inspect(event)}")
+    Logger.debug(
+      "Renderer wx event (with user_data): source=#{inspect(source)} event=#{inspect(event)}"
+    )
+
     handle_wx_event(source, event, state)
   end
 
@@ -163,58 +166,58 @@ defmodule WxMVU.Renderer do
     {:wx_resize, logical_size, pixel_size, dpi_scale}
   end
 
-  # Mouse move
-  defp translate_gl_canvas_event(_source, {:wxMouse, :motion, x, y, _, _, _, _, _, _, _, _}) do
-    {:wx_mouse, :move, x, y, nil, nil, []}
-  end
+  # Mouse events, positionally rather than by shape.
+  #
+  # The `wxMouse` record has grown: this wx build sends fourteen elements
+  # (three trailing wheel fields) where the twelve-element form was written
+  # against. Matching the whole tuple therefore silently stopped matching, and
+  # since nothing in the library used canvas input until now, every click has
+  # been quietly falling through to "unhandled" - the widgets kept working, so
+  # there was nothing to notice.
+  #
+  # Reading by index is the fix that survives the next field being added.
+  defp translate_gl_canvas_event(_source, event)
+       when is_tuple(event) and elem(event, 0) == :wxMouse and tuple_size(event) >= 12 do
+    type = elem(event, 1)
+    x = elem(event, 2)
+    y = elem(event, 3)
+    ctrl = elem(event, 7)
+    shift = elem(event, 8)
+    alt = elem(event, 9)
+    meta = elem(event, 10)
+    wheel_rotation = elem(event, 11)
 
-  # Mouse button down
-  defp translate_gl_canvas_event(_source, {:wxMouse, :left_down, x, y, left, middle, right, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :down, x, y, :left, nil, modifiers(ctrl, shift, alt, meta)}
-  end
+    modifiers = modifiers(ctrl, shift, alt, meta)
 
-  defp translate_gl_canvas_event(_source, {:wxMouse, :middle_down, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :down, x, y, :middle, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  defp translate_gl_canvas_event(_source, {:wxMouse, :right_down, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :down, x, y, :right, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  # Mouse button up
-  defp translate_gl_canvas_event(_source, {:wxMouse, :left_up, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :up, x, y, :left, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  defp translate_gl_canvas_event(_source, {:wxMouse, :middle_up, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :up, x, y, :middle, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  defp translate_gl_canvas_event(_source, {:wxMouse, :right_up, x, y, _, _, _, ctrl, shift, alt, meta, _}) do
-    {:wx_mouse, :up, x, y, :right, nil, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  # Mouse wheel
-  defp translate_gl_canvas_event(_source, {:wxMouse, :mousewheel, x, y, _, _, _, ctrl, shift, alt, meta, wheel_rotation}) do
-    {:wx_mouse, :wheel, x, y, nil, wheel_rotation, modifiers(ctrl, shift, alt, meta)}
-  end
-
-  # Mouse enter/leave
-  defp translate_gl_canvas_event(_source, {:wxMouse, :enter_window, x, y, _, _, _, _, _, _, _, _}) do
-    {:wx_mouse, :enter, x, y, nil, nil, []}
-  end
-
-  defp translate_gl_canvas_event(_source, {:wxMouse, :leave_window, x, y, _, _, _, _, _, _, _, _}) do
-    {:wx_mouse, :leave, x, y, nil, nil, []}
+    case type do
+      :motion -> {:wx_mouse, :move, x, y, nil, nil, []}
+      :left_down -> {:wx_mouse, :down, x, y, :left, nil, modifiers}
+      :middle_down -> {:wx_mouse, :down, x, y, :middle, nil, modifiers}
+      :right_down -> {:wx_mouse, :down, x, y, :right, nil, modifiers}
+      :left_up -> {:wx_mouse, :up, x, y, :left, nil, modifiers}
+      :middle_up -> {:wx_mouse, :up, x, y, :middle, nil, modifiers}
+      :right_up -> {:wx_mouse, :up, x, y, :right, nil, modifiers}
+      :left_dclick -> {:wx_mouse, :double_click, x, y, :left, nil, modifiers}
+      :mousewheel -> {:wx_mouse, :wheel, x, y, nil, wheel_rotation, modifiers}
+      :enter_window -> {:wx_mouse, :enter, x, y, nil, nil, []}
+      :leave_window -> {:wx_mouse, :leave, x, y, nil, nil, []}
+      _other -> nil
+    end
   end
 
   # Key events
-  defp translate_gl_canvas_event(_source, {:wxKey, :key_down, keycode, _, ctrl, shift, alt, meta, unicode_char, _raw}) do
+  defp translate_gl_canvas_event(
+         _source,
+         {:wxKey, :key_down, keycode, _, ctrl, shift, alt, meta, unicode_char, _raw}
+       ) do
     char = if unicode_char > 0, do: <<unicode_char::utf8>>, else: nil
     {:wx_key, :down, keycode, char, modifiers(ctrl, shift, alt, meta)}
   end
 
-  defp translate_gl_canvas_event(_source, {:wxKey, :key_up, keycode, _, ctrl, shift, alt, meta, unicode_char, _raw}) do
+  defp translate_gl_canvas_event(
+         _source,
+         {:wxKey, :key_up, keycode, _, ctrl, shift, alt, meta, unicode_char, _raw}
+       ) do
     char = if unicode_char > 0, do: <<unicode_char::utf8>>, else: nil
     {:wx_key, :up, keycode, char, modifiers(ctrl, shift, alt, meta)}
   end
@@ -291,7 +294,9 @@ defmodule WxMVU.Renderer do
             )
         end
       else
-        Logger.debug("Renderer: #{inspect(module)}.#{function}/0 not present on this OTP, skipping")
+        Logger.debug(
+          "Renderer: #{inspect(module)}.#{function}/0 not present on this OTP, skipping"
+        )
       end
     end)
   end

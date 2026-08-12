@@ -34,7 +34,14 @@
       size: 48,
       range: 6,
       padding: 6,
-      width: 512
+      width: 1024,
+      # Beyond printable ASCII. Symbols an instrument readout actually needs -
+      # degrees, tolerances, micro, ohms, arrows, comparisons - and the
+      # Unicode chess pieces, which examples/chess.exs draws as text. Twelve
+      # glyphs is a small price for a demo that needs no assets of its own,
+      # and they are the clearest proof that :text is drawing real glyph
+      # outlines rather than a bitmap font's ASCII table.
+      extra: "°±×÷µΩ→←↑↓•√≈≠≤≥♔♕♖♗♘♙♚♛♜♝♞♟"
     }
   ]
 }

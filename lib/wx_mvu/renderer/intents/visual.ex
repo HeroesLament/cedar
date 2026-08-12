@@ -15,7 +15,7 @@ defmodule WxMVU.Renderer.Intents.Visual do
 
   # Options belonging to the host rather than the visual, stripped before the
   # rest is passed through as the visual's declaration.
-  @host_opts [:size, :fps, :clear, :module, :opts]
+  @host_opts [:size, :fps, :clear, :module, :opts, :notify]
 
   def apply({:ensure_visual, id, type, parent_id, opts}, state) do
     {module, visual_opts} = resolve(type, opts)
@@ -27,6 +27,8 @@ defmodule WxMVU.Renderer.Intents.Visual do
       opts: [
         visual: module,
         visual_opts: visual_opts,
+        visual_id: id,
+        notify: Keyword.get(opts, :notify),
         clear: Keyword.get(opts, :clear, {0.0, 0.0, 0.0, 1.0})
       ]
     ]
