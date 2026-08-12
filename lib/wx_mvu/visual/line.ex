@@ -23,7 +23,22 @@ defmodule WxMVU.Visual.Line do
 
     * `:color` - `{r, g, b, a}` in `0.0..1.0`, default opaque white
     * `:width` - line width in pixels, default `1.0`
-    * `:points` - initial points, otherwise sent as data
+    * `:points` - a polyline, as a declaration
+    * `:polylines` - several disjoint runs, as a declaration
+
+  ## Declared geometry versus sent geometry
+
+  `:points` and `:polylines` work as options *and* as data, and which one you
+  want is a question about rate, not about taste.
+
+  Declare them when the geometry is a function of the model and changes at
+  human speed: axis rules, tick marks, a threshold line a user drags. The
+  differ then guarantees delivery, so there is no race against the visual
+  existing yet and nothing to re-push periodically to self-heal.
+
+  Send them when the geometry is data arriving at frame rate. Routing a
+  512-point trace through `view/1` and the differ at 30 Hz would be absurd,
+  which is the entire reason `send_data/2` exists.
 
   ## Data
 
@@ -68,30 +83,55 @@ defmodule WxMVU.Visual.Line do
 
   @impl true
   def init(_ctx, opts) do
-    points = Keyword.get(opts, :points, [])
+    {vertices, points} = declared_geometry(opts, {<<>>, 0})
 
     with {:ok, program} <- Shader.load() do
-      vertices = expand(points)
-
       {:ok,
        %__MODULE__{
          program: program,
          geometry: Geometry.new(vertices, layout: @layout, mode: :triangles, usage: :dynamic),
          color: Keyword.get(opts, :color, {1.0, 1.0, 1.0, 1.0}),
          width: Keyword.get(opts, :width, 1.0) * 1.0,
-         point_count: length(points)
+         point_count: points
        }}
     end
   end
 
   @impl true
   def update(state, opts) do
-    {:ok,
-     %{
-       state
-       | color: Keyword.get(opts, :color, state.color),
-         width: Keyword.get(opts, :width, state.width) * 1.0
-     }}
+    state = %{
+      state
+      | color: Keyword.get(opts, :color, state.color),
+        width: Keyword.get(opts, :width, state.width) * 1.0
+    }
+
+    case declared_geometry(opts, :unchanged) do
+      :unchanged ->
+        {:ok, state}
+
+      {vertices, points} ->
+        {:ok, %{state | geometry: Geometry.update(state.geometry, vertices), point_count: points}}
+    end
+  end
+
+  # Returns {vertices, point_count} for whichever geometry option is present,
+  # or the fallback when neither is. Distinguishing "not declared" from
+  # "declared empty" matters: a visual that also receives geometry as data
+  # must not have it wiped by an unrelated colour change.
+  defp declared_geometry(opts, fallback) do
+    cond do
+      Keyword.has_key?(opts, :polylines) ->
+        runs = Keyword.fetch!(opts, :polylines)
+        vertices = runs |> Enum.map(&expand/1) |> IO.iodata_to_binary()
+        {vertices, if(vertices == <<>>, do: 0, else: 2)}
+
+      Keyword.has_key?(opts, :points) ->
+        points = Keyword.fetch!(opts, :points)
+        {expand(points), length(points)}
+
+      true ->
+        fallback
+    end
   end
 
   @impl true
