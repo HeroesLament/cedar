@@ -527,12 +527,175 @@ defmodule WxMVU.Visual.ImageTest do
     end
   end
 
+  describe "Visual.Text" do
+    setup do
+      fbo = offscreen(64)
+      %{fbo: fbo}
+    end
+
+    defp ink(size), do: Enum.count(red_channel(size), &(&1 > 16))
+
+    test "draws nothing until it has a string" do
+      {:ok, state} = Visual.Text.init(%{}, size: 32.0)
+
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+
+      assert ink(64) == 0
+
+      Visual.Text.destroy(state)
+    end
+
+    test "a glyph puts ink on the framebuffer" do
+      {:ok, state} =
+        Visual.Text.init(%{},
+          text: "H",
+          size: 48.0,
+          origin: {8.0, 4.0},
+          color: {1.0, 1.0, 1.0, 1.0}
+        )
+
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+
+      lit = ink(64)
+
+      assert lit > 0, "the glyph rendered nothing"
+      assert lit < 64 * 64, "the glyph filled the frame"
+
+      Visual.Text.destroy(state)
+    end
+
+    test "one atlas serves every size" do
+      # The premise of a distance field. If this fails the atlas is being
+      # treated as a bitmap somewhere.
+      {:ok, state} =
+        Visual.Text.init(%{}, text: "H", size: 16.0, origin: {4.0, 4.0})
+
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+      small = ink(64)
+
+      {:ok, state} = Visual.Text.update(state, size: 48.0)
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+      large = ink(64)
+
+      assert small > 0, "nothing at 16px"
+      assert large > small * 2, "#{small} -> #{large}"
+
+      Visual.Text.destroy(state)
+    end
+
+    test "the edge is antialiased rather than thresholded" do
+      # A hard cutoff would give exactly two values. The intermediate ones are
+      # the whole reason for storing a distance rather than a coverage mask.
+      {:ok, state} =
+        Visual.Text.init(%{}, text: "S", size: 48.0, origin: {8.0, 4.0})
+
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+
+      partial = Enum.count(red_channel(64), &(&1 > 24 and &1 < 232))
+
+      assert partial > 20, "only #{partial} partially-covered pixels along the edge"
+
+      Visual.Text.destroy(state)
+    end
+
+    test "colour is a uniform, not baked into the geometry" do
+      {:ok, state} =
+        Visual.Text.init(%{},
+          text: "H",
+          size: 48.0,
+          origin: {8.0, 4.0},
+          color: {1.0, 0.0, 0.0, 1.0}
+        )
+
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+      red = ink(64)
+
+      {:ok, state} = Visual.Text.update(state, color: {0.0, 1.0, 0.0, 1.0})
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+      still_red = ink(64)
+
+      assert red > 0
+      assert still_red == 0, "the red channel survived a switch to green"
+
+      Visual.Text.destroy(state)
+    end
+
+    test "the origin moves the text" do
+      {:ok, state} =
+        Visual.Text.init(%{}, text: "H", size: 24.0, origin: {2.0, 2.0})
+
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+      # Rows come back bottom-up, so text near the top of the frame lights the
+      # high row indices.
+      near_top = Enum.count(48..63, fn row -> elem(pixel(64, 8, row), 0) > 16 end)
+
+      {:ok, state} = Visual.Text.update(state, origin: {2.0, 40.0})
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+      still_near_top = Enum.count(48..63, fn row -> elem(pixel(64, 8, row), 0) > 16 end)
+
+      assert near_top > 0
+      assert still_near_top < near_top, "#{near_top} -> #{still_near_top}"
+
+      Visual.Text.destroy(state)
+    end
+
+    test "sending a new string replaces the old one" do
+      {:ok, state} = Visual.Text.init(%{}, text: "l", size: 40.0, origin: {4.0, 4.0})
+
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+      thin = ink(64)
+
+      {:ok, state} = Visual.Text.handle_data(state, {:text, "MM"})
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+      wide = ink(64)
+
+      assert wide > thin, "#{thin} -> #{wide}"
+
+      Visual.Text.destroy(state)
+    end
+
+    test "clear empties the geometry" do
+      {:ok, state} = Visual.Text.init(%{}, text: "Hello", size: 24.0, origin: {2.0, 2.0})
+      {:ok, state} = Visual.Text.handle_data(state, :clear)
+
+      clear()
+      {:ok, state} = Visual.Text.draw(state, frame(64))
+
+      assert ink(64) == 0
+
+      Visual.Text.destroy(state)
+    end
+
+    test "a space costs no geometry" do
+      {:ok, state} = Visual.Text.init(%{}, text: "AA", size: 20.0)
+      two = state.vertex_count
+
+      {:ok, state} = Visual.Text.handle_data(state, {:text, "A   A"})
+
+      assert state.vertex_count == two
+
+      Visual.Text.destroy(state)
+    end
+  end
+
   describe "resolve/1" do
     test "built-in visuals are named by atom, as widgets are" do
       assert Visual.resolve(:image) == WxMVU.Visual.Image
       assert Visual.resolve(:line) == WxMVU.Visual.Line
       assert Visual.resolve(:grid) == WxMVU.Visual.Grid
       assert Visual.resolve(:mesh) == WxMVU.Visual.Mesh
+      assert Visual.resolve(:text) == WxMVU.Visual.Text
     end
 
     test "an unknown name says what is available" do

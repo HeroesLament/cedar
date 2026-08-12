@@ -42,7 +42,7 @@ defmodule WxMVU.MixProject do
       # `priv` carries committed shader artifacts. It must stay on this list:
       # `files` is an allowlist, and omitting it would ship a package whose
       # shaders are missing at the consumer's runtime rather than at build time.
-      files: ~w(lib priv mix.exs README.md LICENSE),
+      files: ~w(lib priv mix.exs README.md LICENSE fonts/dejavu/LICENSE),
       licenses: ["MIT"],
       links: %{
         "GitHub" => "https://github.com/HeroesLament/wx_mvu"
