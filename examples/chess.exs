@@ -153,6 +153,21 @@ defmodule ChessDemo do
     end
   end
 
+  # wx_mvu connects :close_window without `skip: true`, so a wx frame does not
+  # close itself - the scene is asked first and decides. That is what lets an
+  # application refuse, or prompt, or save on the way out. The cost is that a
+  # scene which ignores the event has a window whose close button does
+  # nothing, which is exactly what this example had.
+  #
+  # Here, closing the window means quitting. System.stop/1 rather than
+  # System.halt/1 so the shutdown is orderly: the canvas processes terminate
+  # with their GL contexts still current and release their programs, textures
+  # and buffers instead of having them reclaimed out from under them.
+  def handle_event({:ui_event, :main, :close_window, _}, model) do
+    System.stop(0)
+    %{model | status: "Closing…"}
+  end
+
   def handle_event({:ui_event, :reset_btn, :click}, model) do
     %{model | board: starting_position(), selected: nil, moves: 0, status: "Reset."}
   end
