@@ -84,6 +84,32 @@ defmodule WxMVU.GLCanvas.Draw.Std140Test do
 
       assert layout.size == 48
     end
+
+    test "the :mesh block exercises every alignment rule at once" do
+      # mat4 at 0 (64 bytes), mat3 at 64 (48, NOT 36 - each column padded to a
+      # vec4), vec3 at 112 (12 bytes), then vec4 forced to 128 by its 16-byte
+      # alignment, leaving 4 bytes of padding at 124. Total 144.
+      #
+      # Confirmed against Apple's driver: verify_shaders reports
+      # `uniform block [0] "MeshUniforms" data_size=144`. Until :mesh existed,
+      # the mat3 and mat4 rules had never been checked against hardware.
+      layout =
+        Std140.layout(
+          mvp: :mat4,
+          normal_matrix: :mat3,
+          light_direction: :vec3,
+          base_color: :vec4
+        )
+
+      assert Std140.offsets(layout) == %{
+               mvp: 0,
+               normal_matrix: 64,
+               light_direction: 112,
+               base_color: 128
+             }
+
+      assert layout.size == 144
+    end
   end
 
   describe "layout/1 - vec2 alignment" do

@@ -98,13 +98,65 @@ fn floor_f32(x: f32) -> f32 {
 /// smear the whole primitive across the viewport.
 #[inline]
 pub fn normalize2(x: f32, y: f32) -> (f32, f32) {
-    let length_squared = x * x + y * y;
-
-    if length_squared <= 0.0 {
-        (0.0, 0.0)
+    // Scaled before squaring, for the same overflow reason as `normalize3`.
+    let scale = if abs_f32(x) > abs_f32(y) {
+        abs_f32(x)
     } else {
-        let inverse = 1.0 / sqrt_f32(length_squared);
-        (x * inverse, y * inverse)
+        abs_f32(y)
+    };
+
+    if scale <= 0.0 {
+        return (0.0, 0.0);
+    }
+
+    let (x, y) = (x / scale, y / scale);
+    let inverse = 1.0 / sqrt_f32(x * x + y * y);
+
+    (x * inverse, y * inverse)
+}
+
+/// Normalizes a 3D vector, returning `(0.0, 0.0, 0.0)` for a zero-length input.
+///
+/// Deliberately not `glam::Vec3::normalize_or_zero`. That guards itself with
+/// `is_finite()`, which compiles to a comparison against an infinity constant -
+/// and naga rejects the resulting SPIR-V outright with "Float literal is
+/// infinite", so the shader never reaches GLSL. Comparing the squared length
+/// against zero achieves the same guard without ever materialising an infinity.
+///
+/// Degenerate normals are reachable from real data: a mesh with a zero-area
+/// triangle, or a normal attribute left at zero by an exporter.
+#[inline]
+pub fn normalize3(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
+    // Scale by the largest component before squaring. Squaring directly
+    // overflows f32 for inputs above ~1.8e19 - a coordinate of 1e30 gives a
+    // length_squared of infinity, and Newton-Raphson on infinity yields NaN,
+    // which then propagates into the normal and blackens the surface.
+    //
+    // Scaling first keeps every squared term within [0, 1] regardless of the
+    // input's magnitude, so no intermediate can overflow, and it does so
+    // without an `is_finite` check - which would compile to a comparison
+    // against an infinity constant and be rejected by naga.
+    let scale = max3(abs_f32(x), abs_f32(y), abs_f32(z));
+
+    if scale <= 0.0 {
+        return (0.0, 0.0, 0.0);
+    }
+
+    let (x, y, z) = (x / scale, y / scale, z / scale);
+    let inverse = 1.0 / sqrt_f32(x * x + y * y + z * z);
+
+    (x * inverse, y * inverse, z * inverse)
+}
+
+/// Largest of three values.
+#[inline]
+fn max3(a: f32, b: f32, c: f32) -> f32 {
+    let ab = if a > b { a } else { b };
+
+    if ab > c {
+        ab
+    } else {
+        c
     }
 }
 
@@ -194,6 +246,24 @@ fn abs_f32(x: f32) -> f32 {
     }
 }
 
+/// Lambertian diffuse intensity with an ambient floor.
+///
+/// `n_dot_l` is the dot product of the surface normal and the direction to the
+/// light, both normalized. `ambient` is the fraction of full brightness a
+/// surface facing directly away still receives.
+///
+/// The ambient floor is not cosmetic. With pure Lambert, geometry facing away
+/// from the light renders pure black and its silhouette disappears against the
+/// background - which in a CAD viewport means a robot arm that vanishes when it
+/// rotates. Every real viewport has some floor.
+#[inline]
+pub fn lambert_intensity(n_dot_l: f32, ambient: f32) -> f32 {
+    let ambient = clamp_unit(ambient);
+    let diffuse = clamp_unit(n_dot_l);
+
+    ambient + (1.0 - ambient) * diffuse
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,6 +315,42 @@ mod tests {
         assert_eq!((-0.25f32).fract(), -0.25);
         assert_eq!(wrap_unit(-0.25), 0.75);
         assert_eq!(wrap_unit(-1.25), 0.75);
+    }
+
+    #[test]
+    fn lambert_is_full_facing_the_light() {
+        assert_eq!(lambert_intensity(1.0, 0.0), 1.0);
+        assert_eq!(lambert_intensity(1.0, 0.2), 1.0);
+    }
+
+    #[test]
+    fn lambert_falls_to_the_ambient_floor_facing_away() {
+        // Not zero: geometry facing away must stay visible against the
+        // background rather than vanishing.
+        assert_eq!(lambert_intensity(-1.0, 0.2), 0.2);
+        assert_eq!(lambert_intensity(0.0, 0.2), 0.2);
+    }
+
+    #[test]
+    fn lambert_interpolates_between_floor_and_full() {
+        let mid = lambert_intensity(0.5, 0.2);
+        assert!((mid - 0.6).abs() < 1.0e-5, "mid = {mid}");
+    }
+
+    #[test]
+    fn lambert_is_always_in_range() {
+        for n_dot_l in [-2.0, -1.0, -0.3, 0.0, 0.4, 1.0, 3.0] {
+            for ambient in [0.0, 0.15, 1.0] {
+                let i = lambert_intensity(n_dot_l, ambient);
+                assert!(i >= 0.0 && i <= 1.0, "intensity({n_dot_l}, {ambient}) = {i}");
+            }
+        }
+    }
+
+    #[test]
+    fn lambert_tolerates_an_out_of_range_ambient() {
+        assert_eq!(lambert_intensity(0.0, 5.0), 1.0);
+        assert_eq!(lambert_intensity(1.0, -1.0), 1.0);
     }
 
     #[test]
@@ -361,6 +467,59 @@ mod tests {
         let (x, y) = normalize2(0.0, 0.0);
         assert_eq!((x, y), (0.0, 0.0));
         assert!(x.is_finite() && y.is_finite());
+    }
+
+    #[test]
+    fn normalize3_produces_unit_length() {
+        let (x, y, z) = normalize3(0.0, 3.0, 4.0);
+        assert!((x - 0.0).abs() < 1.0e-5);
+        assert!((y - 0.6).abs() < 1.0e-5, "y = {y}");
+        assert!((z - 0.8).abs() < 1.0e-5, "z = {z}");
+
+        let length = (x * x + y * y + z * z).sqrt();
+        assert!((length - 1.0).abs() < 1.0e-5);
+    }
+
+    #[test]
+    fn normalize3_survives_a_zero_vector() {
+        // A zero-area triangle, or a normal attribute an exporter left blank.
+        let n = normalize3(0.0, 0.0, 0.0);
+        assert_eq!(n, (0.0, 0.0, 0.0));
+        assert!(n.0.is_finite() && n.1.is_finite() && n.2.is_finite());
+    }
+
+    #[test]
+    fn normalize3_stays_finite_at_extreme_magnitudes() {
+        // 1e30 squared overflows f32. Without scaling first, length_squared
+        // becomes infinity, sqrt of that is NaN, and the normal is destroyed.
+        for v in [
+            (1.0e-30, 0.0, 0.0),
+            (1.0e30, 1.0e30, 0.0),
+            (3.0e38, -3.0e38, 3.0e38),
+            (0.0, 0.0, -1.0),
+        ] {
+            let (x, y, z) = normalize3(v.0, v.1, v.2);
+
+            assert!(
+                x.is_finite() && y.is_finite() && z.is_finite(),
+                "{v:?} -> ({x}, {y}, {z})"
+            );
+
+            let length = (x * x + y * y + z * z).sqrt();
+            assert!((length - 1.0).abs() < 1.0e-4, "{v:?} -> length {length}");
+        }
+    }
+
+    #[test]
+    fn normalize2_stays_finite_at_extreme_magnitudes() {
+        for v in [(1.0e30, 1.0e30), (3.0e38, -1.0e-30), (1.0e-30, 0.0)] {
+            let (x, y) = normalize2(v.0, v.1);
+
+            assert!(x.is_finite() && y.is_finite(), "{v:?} -> ({x}, {y})");
+
+            let length = (x * x + y * y).sqrt();
+            assert!((length - 1.0).abs() < 1.0e-4, "{v:?} -> length {length}");
+        }
     }
 
     #[test]

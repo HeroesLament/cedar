@@ -130,3 +130,11 @@ dependencies = [
  "spirv-std",
  "wx-mvu-shader-core",
 ]
+
+[[package]]
+name = "wx-mvu-shader-mesh"
+version = "0.1.0"
+dependencies = [
+ "spirv-std",
+ "wx-mvu-shader-core",
+]
