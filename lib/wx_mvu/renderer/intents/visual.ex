@@ -59,6 +59,18 @@ defmodule WxMVU.Renderer.Intents.Visual do
   end
 
   defp resolve(type, opts) when is_atom(type) do
+    if Keyword.has_key?(opts, :opts) do
+      raise ArgumentError, """
+      #{inspect(type)} is a built-in visual, so its options go inline:
+
+          {:ensure_visual, :id, #{inspect(type)}, :parent, grid: {512, 256}, ...}
+
+      `opts:` is for :custom visuals, where it separates your module's options
+      from the host's. Passing it to a built-in one would silently drop
+      everything inside it.
+      """
+    end
+
     {Visual.resolve(type), Keyword.drop(opts, @host_opts)}
   end
 end

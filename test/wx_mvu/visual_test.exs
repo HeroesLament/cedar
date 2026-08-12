@@ -839,6 +839,64 @@ defmodule WxMVU.Visual.ImageTest do
       Visual.Line.destroy(state)
     end
 
+    test "runs can be declared instead of sent" do
+      # The declarative path: geometry that is a function of the model and
+      # changes at human speed, so the differ can carry it and there is no
+      # race against the visual existing yet.
+      {:ok, state} =
+        Visual.Line.init(%{},
+          color: {1.0, 0.0, 0.0, 1.0},
+          width: 2.0,
+          polylines: [[{-0.5, -1.0}, {-0.5, 1.0}]]
+        )
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(32))
+
+      assert Enum.any?(red_channel(32), &(&1 > 128)), "declared geometry did not draw"
+
+      Visual.Line.destroy(state)
+    end
+
+    test "a declared change replaces the geometry" do
+      {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 2.0)
+
+      {:ok, state} = Visual.Line.update(state, polylines: [[{-0.5, -1.0}, {-0.5, 1.0}]])
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(32))
+      one = Enum.count(red_channel(32), &(&1 > 128))
+
+      {:ok, state} =
+        Visual.Line.update(state,
+          polylines: [[{-0.5, -1.0}, {-0.5, 1.0}], [{0.5, -1.0}, {0.5, 1.0}]]
+        )
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(32))
+      two = Enum.count(red_channel(32), &(&1 > 128))
+
+      assert two > one, "#{one} -> #{two}"
+
+      Visual.Line.destroy(state)
+    end
+
+    test "an unrelated option change leaves sent geometry alone" do
+      # The trap: a visual whose points arrived as data, updated because its
+      # colour changed. Treating "no :points in these opts" as "no points"
+      # would blank the line on every recolour.
+      {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 2.0)
+      {:ok, state} = Visual.Line.handle_data(state, {:points, [{-0.8, 0.0}, {0.8, 0.0}]})
+
+      {:ok, state} = Visual.Line.update(state, color: {1.0, 1.0, 1.0, 1.0})
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(32))
+
+      assert Enum.any?(red_channel(32), &(&1 > 128)), "the recolour wiped the geometry"
+
+      Visual.Line.destroy(state)
+    end
+
     test "an empty list draws nothing" do
       {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 2.0)
       {:ok, state} = Visual.Line.handle_data(state, {:polylines, []})
