@@ -26,4 +26,5 @@ wx_mvu-*.tar
 # rust-gpu shader build artifacts (generated GLSL in priv/shaders IS committed)
 shaders/out/
 shaders/target/
-shaders/Cargo.lock
+# shaders/Cargo.lock is deliberately committed: it records the exact rust-gpu
+# revision that produced the GLSL in priv/shaders/.

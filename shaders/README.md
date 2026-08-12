@@ -48,12 +48,20 @@ Watch `vec3`: it is 12 bytes but aligns to 16. `mat3` is 48 bytes, not 36.
 ## Testing
 
 Shader crates are `no_std` only under `target_arch = "spirv"`, so they also
-build for the host. Pure functions can and should be unit tested:
+build for the host and their pure functions can be unit tested without a GPU:
 
-    cargo test
+    mix wx_mvu.shaders.test
 
-That is the main reason to write shaders in Rust rather than GLSL — the math is
-testable without a GPU.
+That is the main reason to write shaders in Rust rather than GLSL.
+
+Note that this needs the **pinned nightly**, not stable: `spirv-std` itself uses
+unstable features (`cfg_select!`), so even a host build of a crate depending on
+it fails on stable with E0658. The mix task selects the right toolchain; bare
+`cargo test` will not work.
+
+If you want shader math testable on stable, move it into a crate with no
+`spirv-std` dependency and have the shader crate call into it. Worth doing once
+there is enough shared math to justify a second crate.
 
 ## Verifying output
 

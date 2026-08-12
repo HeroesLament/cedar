@@ -10,4 +10,8 @@ publish = false
 crate-type = ["lib", "dylib"]
 
 [dependencies]
-spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu" }
+# Pinned to an exact revision, not a branch. rust-gpu publishes alphas years
+# apart and tells you to build from `main`, so a floating git dependency would
+# silently move the compiler out from under committed artifacts. Bumping this
+# is a deliberate step - see shaders/shaders.exs.
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "7cb31ae4f9fb069f6c539fdcdfd68b8b6e77e85f" }
