@@ -24,11 +24,11 @@ layout(location = 1) in vec2 _p2vs_location1;
 smooth out vec2 _vs2fs_location0;
 
 void function_1() {
-    vec2 _e17 = a_position_1;
-    vec2 _e18 = a_texcoord_1;
-    out_position = vec4(_e17.x, _e17.y, 0.0, 1.0);
-    v_texcoord_2[0u] = _e18.x;
-    v_texcoord_2[1u] = _e18.y;
+    vec2 _e25 = a_position_1;
+    vec2 _e26 = a_texcoord_1;
+    out_position = vec4(_e25.x, _e25.y, 0.0, 1.0);
+    v_texcoord_2[0u] = _e26.x;
+    v_texcoord_2[1u] = _e26.y;
     return;
 }
 

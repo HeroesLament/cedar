@@ -1,0 +1,9 @@
+[package]
+name = "wx-mvu-shader-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# No dependencies, and specifically no spirv-std. That is what keeps this crate
+# buildable and testable on stable Rust; see src/lib.rs.
+[dependencies]

@@ -222,6 +222,21 @@ else
   Golden.fail("expected rows to swap, got bottom=#{inspect(bottom2)} top=#{inspect(top2)}")
 end
 
+Golden.section("Backwards scroll (row_offset = -0.5)")
+
+# Rust's .fract() truncates, so it returns -0.25 here and would sample at a
+# negative coordinate. wx_mvu_shader_core.wrap_unit is floor-based and returns
+# 0.75, matching GLSL fract. Scrolling back should look identical to scrolling
+# forward by the same amount.
+{bottom3, top3} = render.(-0.5)
+IO.puts("  bottom=#{Golden.name(bottom3)}  top=#{Golden.name(top3)}")
+
+if Golden.close?(bottom3, {0, 0, 255}) and Golden.close?(top3, {255, 0, 0}) do
+  Golden.ok("negative offset wraps the same as positive")
+else
+  Golden.fail("expected -0.5 to match +0.5, got bottom=#{inspect(bottom3)} top=#{inspect(top3)}")
+end
+
 Golden.section("Domain clamp (row_offset = 0.0, domain -50..0)")
 
 # -100.0 is below domain_min, so it must clamp to 0.0 -> red, not wrap or NaN.

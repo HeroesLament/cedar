@@ -36,26 +36,46 @@ defmodule Mix.Tasks.WxMvu.Shaders.Test do
     manifest_path = Path.join(workspace, "shaders.exs")
     {manifest, _bindings} = Code.eval_file(manifest_path)
     toolchain = manifest.rust_gpu.toolchain
+    stable_crates = Map.get(manifest, :stable_crates, [])
 
-    Mix.shell().info("Running shader tests on #{toolchain}\n")
+    # Stable pass first. These crates hold the shader maths and must not depend
+    # on spirv-std; running them on stable is what enforces that, because a
+    # spirv-std dependency fails here with E0658 and nowhere else.
+    Enum.each(stable_crates, fn crate ->
+      Mix.shell().info("== #{crate} (stable)")
+      run!(workspace, ["+stable", "test", "-p", crate | args], stable_hint(crate))
+    end)
 
-    case System.cmd("cargo", ["+#{toolchain}", "test" | args],
+    Mix.shell().info("\n== workspace (#{toolchain})")
+    run!(workspace, ["+#{toolchain}", "test", "--workspace" | args], nightly_hint(toolchain))
+  end
+
+  defp run!(workspace, args, hint) do
+    case System.cmd("cargo", args,
            cd: workspace,
            stderr_to_stdout: true,
            into: IO.stream(:stdio, :line)
          ) do
-      {_stream, 0} ->
-        :ok
-
-      {_stream, status} ->
-        Mix.raise("""
-        shader tests failed (exit #{status}).
-
-        If the failure is E0658 "use of unstable library feature", the wrong
-        toolchain was selected. Check that #{toolchain} is installed:
-
-            rustup toolchain list
-        """)
+      {_stream, 0} -> :ok
+      {_stream, status} -> Mix.raise("cargo exited #{status}.\n\n#{hint}")
     end
+  end
+
+  defp stable_hint(crate) do
+    """
+    #{crate} is declared in shaders/shaders.exs as a crate that must build on
+    stable Rust. If this failed with E0658 "use of unstable library feature",
+    something in its dependency graph now pulls in spirv-std. Move the code
+    that needs spirv-std into a shader crate instead.
+    """
+  end
+
+  defp nightly_hint(toolchain) do
+    """
+    If this failed with E0658, the wrong toolchain was selected. Check that
+    #{toolchain} is installed:
+
+        rustup toolchain list
+    """
   end
 end
