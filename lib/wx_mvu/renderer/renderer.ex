@@ -265,16 +265,35 @@ defmodule WxMVU.Renderer do
   ## ------------------------------------------------------------------
 
   defp init_opengl_nif do
-    # On macOS 26+, the gl module's on_load doesn't fire automatically.
-    # We need to explicitly initialize the NIF before using any GL functions.
-    try do
-      :gl.init_nif()
-      :wxe_master.init_opengl()
-      Logger.debug("Renderer: OpenGL NIF initialized")
-    catch
-      _, _ ->
-        Logger.warning("Renderer: OpenGL NIF initialization failed - GL canvases may not work")
-    end
+    # On some macOS/wx combinations the gl module's on_load does not fire
+    # automatically and the NIF must be initialised explicitly.
+    #
+    # Both entry points are version-dependent: :gl.init_nif/0 does not exist on
+    # OTP 29 / wx-2.6, where the NIF initialises itself. Its absence is normal,
+    # not a failure, so it is gated rather than caught - the previous version
+    # warned on every startup and, worse, the raised UndefinedFunctionError
+    # meant :wxe_master.init_opengl/0 on the following line never ran at all.
+    #
+    # apply/3 keeps the compiler from warning about a function that legitimately
+    # may not exist.
+    Enum.each([{:gl, :init_nif}, {:wxe_master, :init_opengl}], fn {module, function} ->
+      Code.ensure_loaded(module)
+
+      if function_exported?(module, function, 0) do
+        try do
+          apply(module, function, [])
+          Logger.debug("Renderer: #{inspect(module)}.#{function}/0 ok")
+        catch
+          kind, reason ->
+            Logger.warning(
+              "Renderer: #{inspect(module)}.#{function}/0 failed " <>
+                "(#{inspect(kind)}: #{inspect(reason)}) - GL canvases may not work"
+            )
+        end
+      else
+        Logger.debug("Renderer: #{inspect(module)}.#{function}/0 not present on this OTP, skipping")
+      end
+    end)
   end
 
   defp detect_mode do
