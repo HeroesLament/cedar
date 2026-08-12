@@ -9,4 +9,4 @@
 
 [workspace]
 resolver = "2"
-members = ["core", "image", "line"]
+members = ["core", "grid", "image", "line"]

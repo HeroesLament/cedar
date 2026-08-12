@@ -196,7 +196,8 @@ Verify.section("std140")
 # own GL_UNIFORM_BLOCK_DATA_SIZE against our computed size.
 expected_layouts = [
   {"image", [row_offset: :f32, domain_min: :f32, domain_max: :f32]},
-  {"line", [color: :vec4, viewport: :vec2, line_width: :f32]}
+  {"line", [color: :vec4, viewport: :vec2, line_width: :f32]},
+  {"grid", [line_color: :vec4, background: :vec4, spacing: :vec2, thickness: :f32]}
 ]
 
 for {name, fields} <- expected_layouts do

@@ -62,6 +62,28 @@ defmodule WxMVU.GLCanvas.Draw.Std140Test do
       assert Std140.offsets(layout) == %{color: 0, viewport: 16, line_width: 24}
       assert layout.size == 32
     end
+
+    test "the :grid block packs to 48" do
+      # Two vec4 at 0 and 16, vec2 at 32, f32 at 40, ending at 44 and rounding
+      # to 48. Confirmed against Apple's driver: verify_shaders reports
+      # `uniform block [0] "GridUniforms" data_size=48`.
+      layout =
+        Std140.layout(
+          line_color: :vec4,
+          background: :vec4,
+          spacing: :vec2,
+          thickness: :f32
+        )
+
+      assert Std140.offsets(layout) == %{
+               line_color: 0,
+               background: 16,
+               spacing: 32,
+               thickness: 40
+             }
+
+      assert layout.size == 48
+    end
   end
 
   describe "layout/1 - vec2 alignment" do
