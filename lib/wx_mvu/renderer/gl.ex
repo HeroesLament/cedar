@@ -580,6 +580,35 @@ defmodule WxMVU.Renderer.GL do
   end
 
   # ============================================================================
+  # Pixel Readback
+  # ============================================================================
+
+  # Reads a rectangle out of the current read framebuffer.
+  #
+  # Returns rows bottom-up, as GL does: the first row of the binary is the
+  # bottom row of the framebuffer, not the top.
+  #
+  # Needed for golden-image tests and, later, GPU picking.
+  def read_pixels(x, y, width, height, format, type) do
+    bytes = width * height * components(format) * type_size(type)
+    buffer = :wx.create_memory(bytes)
+
+    :gl.readPixels(x, y, width, height, pixel_format(format), pixel_type(type), buffer)
+
+    buffer |> :wx.get_memory_bin() |> binary_part(0, bytes)
+  end
+
+  defp components(:red), do: 1
+  defp components(:rg), do: 2
+  defp components(f) when f in [:rgb, :bgr], do: 3
+  defp components(f) when f in [:rgba, :bgra], do: 4
+
+  defp type_size(:unsigned_byte), do: 1
+  defp type_size(:unsigned_short), do: 2
+  defp type_size(:unsigned_int), do: 4
+  defp type_size(:float), do: 4
+
+  # ============================================================================
   # Error Checking
   # ============================================================================
 
