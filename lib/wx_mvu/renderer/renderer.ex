@@ -41,7 +41,7 @@ defmodule WxMVU.Renderer do
 
   @impl true
   def init(:ok) do
-    wx = :wx.new()
+    wx = new_wx!()
 
     # Initialize OpenGL NIF - required on macOS 26+ where on_load doesn't work automatically
     init_opengl_nif()
@@ -305,5 +305,44 @@ defmodule WxMVU.Renderer do
     {r, g, b, _a} = :wxSystemSettings.getColour(5)
     avg = div(r + g + b, 3)
     if avg > 128, do: :light, else: :dark
+  end
+
+  # `:wx.new/0` raises {:load_driver, ~c"No driver found"} when the Erlang
+  # install was built without wxWidgets. That message says nothing about the
+  # cause and is the first thing a new user hits on a machine whose OTP came
+  # from a source build or a minimal package, so it is worth translating once
+  # here rather than being answered repeatedly in an issue tracker.
+  defp new_wx! do
+    :wx.new()
+  rescue
+    e in ErlangError ->
+      case e.original do
+        {:load_driver, _} ->
+          reraise """
+                  wxWidgets is not available in this Erlang install.
+
+                  wx_mvu needs an Erlang/OTP built with wxWidgets support, and
+                  `:wx.new()` could not load its driver. This is a property of
+                  how Erlang was built, not of your project.
+
+                  Erlang #{System.otp_release()}, wx #{wx_vsn()}.
+
+                  With asdf or kerl, rebuild Erlang with wx present first - on
+                  macOS `brew install wxwidgets`, on Debian/Ubuntu
+                  `apt install libwxgtk3.2-dev`. A prebuilt Erlang from a
+                  distribution package usually already has it.
+                  """,
+                  __STACKTRACE__
+
+        _other ->
+          reraise e, __STACKTRACE__
+      end
+  end
+
+  defp wx_vsn do
+    case Application.spec(:wx, :vsn) do
+      nil -> "not loaded"
+      vsn -> to_string(vsn)
+    end
   end
 end

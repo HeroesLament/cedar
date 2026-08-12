@@ -33,3 +33,6 @@ shaders/target/
 # these are the intermediates that produce it.
 /tools/atlas/target/
 /fonts/out/
+
+# macOS Finder droppings
+.DS_Store
