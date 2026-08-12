@@ -27,8 +27,14 @@ defmodule WxMVU.Visual.Line do
 
   ## Data
 
-      {:points, [{x, y}, ...]}   # replaces the whole line
-      :clear                      # draws nothing
+      {:points, [{x, y}, ...]}              # one polyline
+      {:polylines, [[{x, y}, ...], ...]}    # several disjoint runs
+      :clear                                 # draws nothing
+
+  `:polylines` is not a convenience over calling `:points` repeatedly - it is
+  the only way to draw disjoint runs at all, since each send replaces the
+  whole buffer. Axis rules, tick marks and a dashed trace are all one draw
+  call this way.
 
   Coordinates are in clip space for now: `-1.0..1.0` with the origin at centre.
   A transform stack belongs with the `Viewport` work, not here.
@@ -92,6 +98,16 @@ defmodule WxMVU.Visual.Line do
   def handle_data(state, {:points, points}) when is_list(points) do
     geometry = Geometry.update(state.geometry, expand(points))
     {:ok, %{state | geometry: geometry, point_count: length(points)}}
+  end
+
+  def handle_data(state, {:polylines, runs}) when is_list(runs) do
+    vertices = runs |> Enum.map(&expand/1) |> IO.iodata_to_binary()
+
+    # Every run of fewer than two points expands to nothing, so the count that
+    # matters is how many vertices came out, not how many points went in.
+    drawable = if vertices == <<>>, do: 0, else: 2
+
+    {:ok, %{state | geometry: Geometry.update(state.geometry, vertices), point_count: drawable}}
   end
 
   def handle_data(state, :clear) do

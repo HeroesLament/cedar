@@ -689,6 +689,186 @@ defmodule WxMVU.Visual.ImageTest do
     end
   end
 
+  describe "Visual.Layers" do
+    setup do
+      fbo = offscreen(32)
+      %{fbo: fbo}
+    end
+
+    defp waterfall_stack(opts \\ []) do
+      domain = Keyword.get(opts, :domain, {0.0, 1.0})
+
+      Visual.Layers.init(%{},
+        layers: [
+          history: {:image, grid: {8, 8}, domain: domain, colormap: :grayscale, fill: 1.0},
+          ticks: {:line, color: {1.0, 0.0, 0.0, 1.0}, width: 2.0}
+        ]
+      )
+    end
+
+    test "layers draw in declaration order" do
+      # The line is declared second, so it lands on top of the image. If the
+      # order were reversed the image would paint over it and the overlay
+      # would silently not exist.
+      {:ok, state} = waterfall_stack()
+
+      {:ok, state} =
+        Visual.Layers.handle_data(state, {:ticks, {:points, [{0.0, -1.0}, {0.0, 1.0}]}})
+
+      clear()
+      {:ok, state} = Visual.Layers.draw(state, frame(32))
+
+      centre = pixel(32, 16, 16)
+      edge = pixel(32, 2, 16)
+
+      assert elem(centre, 0) > 200, "the tick did not survive the image beneath it"
+      assert elem(centre, 1) < 64, "the tick is not red, so it is the image showing through"
+      assert edge != centre, "the image is not drawing at all"
+
+      Visual.Layers.destroy(state)
+    end
+
+    test "data is routed by layer name" do
+      {:ok, state} = waterfall_stack()
+
+      # A row into the image layer, nothing into the line layer.
+      row = for _ <- 1..8, into: <<>>, do: <<0.0::float-32-native>>
+      {:ok, state} = Visual.Layers.handle_data(state, {:history, {:row, row}})
+
+      clear()
+      {:ok, state} = Visual.Layers.draw(state, frame(32))
+
+      assert Enum.any?(red_channel(32), &(&1 < 64)), "the dark row never reached the image"
+
+      Visual.Layers.destroy(state)
+    end
+
+    test "data for an unknown layer is dropped, not raised" do
+      # A producer that starts before a layer exists is normal in a supervised
+      # system; taking the canvas down over it is not.
+      {:ok, state} = waterfall_stack()
+
+      assert {:ok, ^state} = Visual.Layers.handle_data(state, {:nope, {:row, <<>>}})
+
+      Visual.Layers.destroy(state)
+    end
+
+    test "a changed declaration reaches only its own layer" do
+      {:ok, state} = waterfall_stack(domain: {0.0, 1.0})
+
+      {:ok, state} =
+        Visual.Layers.handle_data(state, {:ticks, {:points, [{0.0, -1.0}, {0.0, 1.0}]}})
+
+      clear()
+      {:ok, state} = Visual.Layers.draw(state, frame(32))
+      before = pixel(32, 16, 16)
+
+      # Rescale the image's domain. The line layer must be untouched - in
+      # particular its vertex buffer must survive, which it would not if the
+      # stack rebuilt itself on any change.
+      {:ok, state} =
+        Visual.Layers.update(state,
+          layers: [
+            history: {:image, grid: {8, 8}, domain: {0.0, 2.0}, colormap: :grayscale, fill: 1.0},
+            ticks: {:line, color: {1.0, 0.0, 0.0, 1.0}, width: 2.0}
+          ]
+        )
+
+      clear()
+      {:ok, state} = Visual.Layers.draw(state, frame(32))
+
+      assert pixel(32, 16, 16) == before, "the overlay was disturbed by an image-only change"
+
+      Visual.Layers.destroy(state)
+    end
+
+    test "adding a layer asks for a rebuild rather than reconciling" do
+      {:ok, state} = waterfall_stack()
+
+      assert {:reinit, :layers_changed} =
+               Visual.Layers.update(state,
+                 layers: [
+                   history: {:image, grid: {8, 8}, domain: {0.0, 1.0}, colormap: :grayscale},
+                   ticks: {:line, color: {1.0, 0.0, 0.0, 1.0}},
+                   labels: {:text, text: "hi"}
+                 ]
+               )
+
+      Visual.Layers.destroy(state)
+    end
+
+    test "names/1 reports the draw order" do
+      {:ok, state} = waterfall_stack()
+
+      assert Visual.Layers.names(state) == [:history, :ticks]
+
+      Visual.Layers.destroy(state)
+    end
+  end
+
+  describe "Visual.Line polylines" do
+    setup do
+      fbo = offscreen(32)
+      %{fbo: fbo}
+    end
+
+    test "several disjoint runs draw in one call" do
+      # Ticks are the motivating case: many short segments, no connection
+      # between them. Sending them as one polyline would draw the joining
+      # strokes as well.
+      {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 2.0)
+
+      runs = [
+        [{-0.5, -1.0}, {-0.5, 1.0}],
+        [{0.5, -1.0}, {0.5, 1.0}]
+      ]
+
+      {:ok, state} = Visual.Line.handle_data(state, {:polylines, runs})
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(32))
+
+      row = for col <- 0..31, do: elem(pixel(32, col, 16), 0)
+      lit = Enum.count(row, &(&1 > 128))
+
+      assert lit > 0, "no ticks drawn"
+      # Two 2px verticals, and nothing joining them across the middle.
+      assert lit <= 8, "#{lit} lit pixels across the row - the runs were joined"
+      assert Enum.at(row, 16) < 128, "the gap between the ticks was filled in"
+
+      Visual.Line.destroy(state)
+    end
+
+    test "an empty list draws nothing" do
+      {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 2.0)
+      {:ok, state} = Visual.Line.handle_data(state, {:polylines, []})
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(32))
+
+      assert Enum.all?(red_channel(32), &(&1 == 0))
+
+      Visual.Line.destroy(state)
+    end
+
+    test "runs too short to be a line are skipped, not fatal" do
+      {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 2.0)
+
+      {:ok, state} =
+        Visual.Line.handle_data(
+          state,
+          {:polylines, [[{0.0, 0.0}], [], [{-0.5, -1.0}, {-0.5, 1.0}]]}
+        )
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(32))
+
+      assert Enum.any?(red_channel(32), &(&1 > 128)), "the one real run did not draw"
+
+      Visual.Line.destroy(state)
+    end
+  end
+
   describe "resolve/1" do
     test "built-in visuals are named by atom, as widgets are" do
       assert Visual.resolve(:image) == WxMVU.Visual.Image
@@ -696,6 +876,7 @@ defmodule WxMVU.Visual.ImageTest do
       assert Visual.resolve(:grid) == WxMVU.Visual.Grid
       assert Visual.resolve(:mesh) == WxMVU.Visual.Mesh
       assert Visual.resolve(:text) == WxMVU.Visual.Text
+      assert Visual.resolve(:layers) == WxMVU.Visual.Layers
     end
 
     test "an unknown name says what is available" do
