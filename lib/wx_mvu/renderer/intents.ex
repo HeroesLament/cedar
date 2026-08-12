@@ -3,7 +3,7 @@ defmodule WxMVU.Renderer.Intents do
   Routes intents to specific handler modules.
   """
 
-  alias WxMVU.Renderer.Intents.{Window, Panel, Widgets, Layout, Properties, GLCanvas}
+  alias WxMVU.Renderer.Intents.{Window, Panel, Widgets, Layout, Properties, GLCanvas, Visual}
 
   # Window operations
   def apply({:ensure_window, _, _} = intent, state), do: Window.apply(intent, state)
@@ -24,6 +24,11 @@ defmodule WxMVU.Renderer.Intents do
   # GL Canvas operations
   def apply({:ensure_gl_canvas, _, _, _} = intent, state), do: GLCanvas.apply(intent, state)
   def apply({:destroy_gl_canvas, _} = intent, state), do: GLCanvas.apply(intent, state)
+
+  # Visual operations
+  def apply({:ensure_visual, _, _, _, _} = intent, state), do: Visual.apply(intent, state)
+  def apply({:update_visual, _, _, _} = intent, state), do: Visual.apply(intent, state)
+  def apply({:destroy_visual, _} = intent, state), do: Visual.apply(intent, state)
 
   # Dialogs
   def apply({:show_dialog, _, _, _, _} = intent, state), do: Widgets.apply(intent, state)

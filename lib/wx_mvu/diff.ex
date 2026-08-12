@@ -60,6 +60,7 @@ defmodule WxMVU.Diff do
   def intent_id({:ensure_panel, id, _parent, _opts}), do: {:panel, id}
   def intent_id({:ensure_widget, id, type, _parent, _opts}), do: {:widget, id, type}
   def intent_id({:ensure_gl_canvas, id, _parent, _opts}), do: {:gl_canvas, id}
+  def intent_id({:ensure_visual, id, _type, _parent, _opts}), do: {:visual, id}
   def intent_id({:set, id, _props}), do: {:set, id}
   def intent_id({:layout, id, _spec}), do: {:layout, id}
 
@@ -119,15 +120,18 @@ defmodule WxMVU.Diff do
   defp destroyable?({:ensure_panel, _, _, _}), do: true
   defp destroyable?({:ensure_window, _, _}), do: true
   defp destroyable?({:ensure_gl_canvas, _, _, _}), do: true
+  defp destroyable?({:ensure_visual, _, _, _, _}), do: true
   defp destroyable?(_), do: false
 
   defp to_destroy_intent({:ensure_widget, id, type, _, _}), do: {:destroy_widget, id, type}
   defp to_destroy_intent({:ensure_panel, id, _, _}), do: {:destroy_panel, id}
   defp to_destroy_intent({:ensure_window, id, _}), do: {:destroy_window, id}
   defp to_destroy_intent({:ensure_gl_canvas, id, _, _}), do: {:destroy_gl_canvas, id}
+  defp to_destroy_intent({:ensure_visual, id, _, _, _}), do: {:destroy_visual, id}
 
   defp destroy_order({:widget, _, _}), do: 0
   defp destroy_order({:gl_canvas, _}), do: 0
+  defp destroy_order({:visual, _}), do: 0
   defp destroy_order({:panel, _}), do: 1
   defp destroy_order({:window, _}), do: 2
   defp destroy_order(_), do: 0
@@ -149,6 +153,7 @@ defmodule WxMVU.Diff do
   defp creatable?({:ensure_panel, _, _, _}), do: true
   defp creatable?({:ensure_widget, _, _, _, _}), do: true
   defp creatable?({:ensure_gl_canvas, _, _, _}), do: true
+  defp creatable?({:ensure_visual, _, _, _, _}), do: true
   defp creatable?(_), do: false
 
   ## ------------------------------------------------------------------
@@ -182,6 +187,15 @@ defmodule WxMVU.Diff do
 
   defp diff_intent({_id, {:ensure_widget, id, type, parent, old_opts}, {:ensure_widget, id, type, parent, new_opts}}) do
     if opts_equal?(old_opts, new_opts), do: [], else: [{:update_widget, id, type, new_opts}]
+  end
+
+  # A visual's declaration is a pure function of the model, so a change here is
+  # the normal path rather than an exception: a new colour domain or colormap
+  # becomes a minimal GPU update rather than a teardown. The visual itself
+  # decides whether it can absorb the change or wants rebuilding.
+  defp diff_intent({_id, {:ensure_visual, id, type, parent, old_opts},
+                    {:ensure_visual, id, type, parent, new_opts}}) do
+    if opts_equal?(old_opts, new_opts), do: [], else: [{:update_visual, id, type, new_opts}]
   end
 
   defp diff_intent({_id, {:ensure_gl_canvas, id, parent, old_opts}, {:ensure_gl_canvas, id, parent, new_opts}}) do

@@ -115,6 +115,28 @@ defmodule WxMVU.Visual do
   end
 
   @doc """
+  Sends data straight to a visual, bypassing MVU.
+
+      WxMVU.Visual.send_data(:waterfall, {:row, bins})
+      WxMVU.Visual.send_data(:constellation, :clear)
+
+  This is the high-rate path. Configuration belongs in the scene's declaration,
+  where the differ turns a change into a minimal GPU update; sample data does
+  not, because routing it through `view/1` at 30 Hz would be absurd.
+  """
+  @spec send_data(term(), term()) :: :ok
+  defdelegate send_data(visual_id, message), to: WxMVU.GLCanvas
+
+  @doc """
+  Requests an immediate redraw.
+
+  The runtime schedules frames on its own; this is for forcing one after a
+  change that would otherwise wait for the next tick.
+  """
+  @spec request_render(term()) :: :ok
+  defdelegate request_render(visual_id), to: WxMVU.GLCanvas
+
+  @doc """
   Resolves a built-in visual atom to its module.
 
   Mirrors how widget types resolve, and keeps framework-provided visuals as
