@@ -75,6 +75,16 @@
       },
       # No samplers. The line visual is pure geometry.
       samplers: %{}
+    },
+    %{
+      name: "grid",
+      crate: "grid",
+      entry_points: [vert: "main_vs", frag: "main_fs"],
+      block: %{
+        name: "GridUniforms",
+        fields: [:line_color, :background, :spacing, :thickness]
+      },
+      samplers: %{}
     }
   ]
 }

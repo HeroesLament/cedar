@@ -1,0 +1,15 @@
+[package]
+name = "wx-mvu-shader-grid"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["lib", "dylib"]
+
+[dependencies]
+# Shader maths, with no spirv-std dependency so it tests on stable.
+wx-mvu-shader-core = { path = "../core" }
+
+# Pinned to an exact revision — see shaders/shaders.exs.
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "7cb31ae4f9fb069f6c539fdcdfd68b8b6e77e85f" }

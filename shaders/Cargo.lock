@@ -108,6 +108,14 @@ name = "wx-mvu-shader-core"
 version = "0.1.0"
 
 [[package]]
+name = "wx-mvu-shader-grid"
+version = "0.1.0"
+dependencies = [
+ "spirv-std",
+ "wx-mvu-shader-core",
+]
+
+[[package]]
 name = "wx-mvu-shader-image"
 version = "0.1.0"
 dependencies = [
