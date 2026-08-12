@@ -144,10 +144,13 @@ defmodule WxMVU.Visual do
   """
   @spec resolve(atom()) :: module()
   def resolve(:image), do: WxMVU.Visual.Image
+  def resolve(:line), do: WxMVU.Visual.Line
+  def resolve(:grid), do: WxMVU.Visual.Grid
 
   def resolve(other) do
     raise ArgumentError,
-          "unknown visual #{inspect(other)}. Built-in visuals: [:image]. " <>
-            "For your own, use :custom with module: YourModule."
+          "unknown visual #{inspect(other)}. Built-in visuals: " <>
+            "[:image, :line, :grid]. For your own, use :custom with " <>
+            "module: YourModule."
   end
 end

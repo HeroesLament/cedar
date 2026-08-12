@@ -45,6 +45,10 @@ defmodule WxMVU.Visual.ImageTest do
 
   defp column, do: for(row <- 0..(@size - 1), do: pixel(@size, 0, row))
 
+  defp frame(size) do
+    %Frame{pixel_size: {size, size}, logical_size: {size, size}, dpi_scale: 1.0}
+  end
+
   setup do
     fbo = offscreen(@size)
     %{fbo: fbo}
@@ -247,9 +251,149 @@ defmodule WxMVU.Visual.ImageTest do
     end
   end
 
+  describe "Visual.Line" do
+    setup do
+      fbo = offscreen(16)
+      %{fbo: fbo}
+    end
+
+    test "draws nothing until it has two points" do
+      {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 4.0)
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(16))
+
+      assert Enum.all?(red_channel(16), &(&1 == 0))
+
+      Visual.Line.destroy(state)
+    end
+
+    test "a horizontal line covers rows in proportion to its width" do
+      {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 4.0)
+      {:ok, state} = Visual.Line.handle_data(state, {:points, [{-0.8, 0.0}, {0.8, 0.0}]})
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(16))
+
+      lit = Enum.count(0..15, fn row -> elem(pixel(16, 8, row), 0) == 255 end)
+      assert lit == 4, "a 4px line should cover 4 rows, covered #{lit}"
+
+      Visual.Line.destroy(state)
+    end
+
+    test "width is a live uniform, not baked into the geometry" do
+      {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 2.0)
+      {:ok, state} = Visual.Line.handle_data(state, {:points, [{-0.8, 0.0}, {0.8, 0.0}]})
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(16))
+      thin = Enum.count(0..15, fn row -> elem(pixel(16, 8, row), 0) == 255 end)
+
+      {:ok, state} = Visual.Line.update(state, width: 6.0)
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(16))
+      thick = Enum.count(0..15, fn row -> elem(pixel(16, 8, row), 0) == 255 end)
+
+      assert thick > thin, "#{thin} -> #{thick}"
+
+      Visual.Line.destroy(state)
+    end
+
+    test "clear empties the geometry" do
+      {:ok, state} = Visual.Line.init(%{}, color: {1.0, 0.0, 0.0, 1.0}, width: 4.0)
+      {:ok, state} = Visual.Line.handle_data(state, {:points, [{-0.8, 0.0}, {0.8, 0.0}]})
+      {:ok, state} = Visual.Line.handle_data(state, :clear)
+
+      clear()
+      {:ok, state} = Visual.Line.draw(state, frame(16))
+
+      assert Enum.all?(red_channel(16), &(&1 == 0))
+
+      Visual.Line.destroy(state)
+    end
+  end
+
+  describe "Visual.Grid" do
+    setup do
+      fbo = offscreen(32)
+      %{fbo: fbo}
+    end
+
+    test "draws lines against a background" do
+      {:ok, state} =
+        Visual.Grid.init(%{},
+          spacing: {0.25, 0.25},
+          thickness: 2.0,
+          line_color: {1.0, 0.0, 0.0, 1.0},
+          background: {0.0, 0.0, 1.0, 1.0}
+        )
+
+      clear()
+      {:ok, state} = Visual.Grid.draw(state, frame(32))
+
+      reds = red_channel(32)
+      lit = Enum.count(reds, &(&1 > 32))
+
+      assert lit > 0, "no gridlines drawn"
+      assert lit < div(32 * 32, 2), "the grid filled the frame"
+
+      Visual.Grid.destroy(state)
+    end
+
+    test "a one-pixel line stays visible" do
+      # Gridlines land on pixel boundaries; a naive coverage model makes
+      # hairlines vanish entirely.
+      {:ok, state} =
+        Visual.Grid.init(%{},
+          spacing: {0.25, 0.25},
+          thickness: 1.0,
+          line_color: {1.0, 0.0, 0.0, 1.0},
+          background: {0.0, 0.0, 0.0, 1.0}
+        )
+
+      clear()
+      {:ok, state} = Visual.Grid.draw(state, frame(32))
+
+      assert Enum.max(red_channel(32)) > 64
+
+      Visual.Grid.destroy(state)
+    end
+
+    test "thickness updates without a rebuild" do
+      {:ok, state} =
+        Visual.Grid.init(%{},
+          spacing: {0.25, 0.25},
+          thickness: 1.0,
+          line_color: {1.0, 0.0, 0.0, 1.0},
+          background: {0.0, 0.0, 0.0, 1.0}
+        )
+
+      clear()
+      {:ok, state} = Visual.Grid.draw(state, frame(32))
+      thin = Enum.count(red_channel(32), &(&1 > 32))
+
+      {:ok, state} = Visual.Grid.update(state, thickness: 4.0)
+      clear()
+      {:ok, state} = Visual.Grid.draw(state, frame(32))
+      thick = Enum.count(red_channel(32), &(&1 > 32))
+
+      assert thick > thin, "#{thin} -> #{thick}"
+
+      Visual.Grid.destroy(state)
+    end
+
+    test "rejects a nonsense spacing" do
+      assert_raise ArgumentError, ~r/:spacing must be/, fn ->
+        Visual.Grid.init(%{}, spacing: {0.0, 0.25})
+      end
+    end
+  end
+
   describe "resolve/1" do
     test "built-in visuals are named by atom, as widgets are" do
       assert Visual.resolve(:image) == WxMVU.Visual.Image
+      assert Visual.resolve(:line) == WxMVU.Visual.Line
+      assert Visual.resolve(:grid) == WxMVU.Visual.Grid
     end
 
     test "an unknown name says what is available" do
