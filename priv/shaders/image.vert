@@ -1,11 +1,11 @@
 #version 410 core
-struct type_5 {
-    float member;
-    float member_1;
-    float member_2;
+struct UniformsData {
+    float row_offset;
+    float domain_min;
+    float domain_max;
 };
-struct type_6 {
-    type_5 member;
+struct UniformsBlock {
+    UniformsData data;
 };
 struct VertexOutput {
     vec4 member;
