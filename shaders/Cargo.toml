@@ -1,10 +1,10 @@
-# Shader workspace for wx_mvu.
+# Shader workspace for cedar.
 #
 # Deliberately separate from `native/` so the rust-gpu nightly never touches
 # the Rustler NIF builds. cargo-gpu isolates the shader toolchain further, so
 # CPU crates stay on stable.
 #
-# Nothing in here is a dependency of wx_mvu. The build output is committed
+# Nothing in here is a dependency of cedar. The build output is committed
 # GLSL 410 under priv/shaders/, and that is all consumers ever see.
 
 [workspace]

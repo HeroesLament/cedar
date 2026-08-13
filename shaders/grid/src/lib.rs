@@ -10,7 +10,7 @@
 //!
 //! This is the first shader here to use a GPU-only intrinsic: `fwidth`, the
 //! rate of change of a value across a pixel, which has no CPU equivalent. The
-//! coverage maths still lives in `wx-mvu-shader-core` and takes the derivative
+//! coverage maths still lives in `cedar-shader-core` and takes the derivative
 //! as an argument, so everything except the intrinsic itself stays testable on
 //! stable Rust.
 
@@ -19,7 +19,7 @@
 use spirv_std::arch::Derivative;
 use spirv_std::glam::{vec4, Vec2, Vec4};
 use spirv_std::spirv;
-use wx_mvu_shader_core::grid_line_alpha;
+use cedar_shader_core::grid_line_alpha;
 
 /// Uniform block. Field order is significant and mirrored in
 /// `shaders/shaders.exs` and the `Program` declaration.

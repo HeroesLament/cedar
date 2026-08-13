@@ -1,4 +1,4 @@
-# Font manifest for `mix wx_mvu.fonts.build`.
+# Font manifest for `mix cedar.fonts.build`.
 #
 # The same arrangement as shaders/shaders.exs, for the same reason: the baked
 # artifact is committed, the tool that bakes it is a maintainer dependency, and

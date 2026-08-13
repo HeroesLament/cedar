@@ -6,7 +6,7 @@
 //! Pipeline: rust-gpu -> spirv-unknown-vulkan1.1 -> naga -> GLSL 410.
 //!
 //! This crate holds only the entry points and their bindings. The maths lives
-//! in `wx-mvu-shader-core`, which has no `spirv-std` dependency and therefore
+//! in `cedar-shader-core`, which has no `spirv-std` dependency and therefore
 //! tests on stable Rust.
 
 #![cfg_attr(target_arch = "spirv", no_std)]
@@ -14,13 +14,13 @@
 use spirv_std::glam::{vec2, vec4, Vec2, Vec4};
 use spirv_std::spirv;
 use spirv_std::{Image, Sampler};
-use wx_mvu_shader_core::{normalize_domain, wrap_unit};
+use cedar_shader_core::{normalize_domain, wrap_unit};
 
 /// Sampled 2D float texture. Both the data grid and the colormap LUT use this.
 pub type Tex2d = Image!(2D, type=f32, sampled);
 
 /// Uniform block. Field order is significant: it is mirrored on the Elixir
-/// side by `WxMVU.GLCanvas.Draw.Program` and in `shaders/shaders.exs`, and
+/// side by `Cedar.GLCanvas.Draw.Program` and in `shaders/shaders.exs`, and
 /// std140 offsets are positional.
 ///
 /// Three consecutive f32 pack to 12 bytes; std140 rounds the block to 16.
@@ -58,7 +58,7 @@ pub fn main_fs(
 ) {
     // wrap_unit rather than .fract(): Rust's fract truncates and stays negative
     // for negative input, so scrolling backwards through history would sample
-    // outside the texture. See wx_mvu_shader_core::wrap_unit.
+    // outside the texture. See cedar_shader_core::wrap_unit.
     let y = wrap_unit(v_texcoord.y + uniforms.row_offset);
 
     let sample: Vec4 = data.sample(*data_sampler, vec2(v_texcoord.x, y));

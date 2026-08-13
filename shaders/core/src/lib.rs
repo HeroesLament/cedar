@@ -1,4 +1,4 @@
-//! Shader math shared across wx_mvu's shaders.
+//! Shader math shared across cedar's shaders.
 //!
 //! This crate deliberately has **no dependency on `spirv-std`**, and must not
 //! acquire one. That is what lets it build and test on stable Rust: `spirv-std`
@@ -11,7 +11,7 @@
 //! toolchain ceremony. That split is the practical argument for writing
 //! shaders in Rust rather than GLSL, so it is worth keeping clean.
 //!
-//! `mix wx_mvu.shaders.test` runs this crate on stable specifically to catch a
+//! `mix cedar.shaders.test` runs this crate on stable specifically to catch a
 //! `spirv-std` dependency creeping in.
 
 #![cfg_attr(not(test), no_std)]

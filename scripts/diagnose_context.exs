@@ -10,12 +10,12 @@
 #
 #     mix run scripts/diagnose_context.exs
 
-alias WxMVU.Renderer.GL
+alias Cedar.Renderer.GL
 alias WxEx.Constants.OpenGL
 
 _wx = :wx.new()
 
-# Verbatim from lib/wx_mvu/renderer/intents/gl_canvas.ex
+# Verbatim from lib/cedar/renderer/intents/gl_canvas.ex
 hardcoded = [
   1,
   4,

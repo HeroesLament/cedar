@@ -20,7 +20,7 @@ erl_crash.dump
 *.ez
 
 # Ignore package tarball (built via "mix hex.build").
-wx_mvu-*.tar
+cedar-*.tar
 
 
 # rust-gpu shader build artifacts (generated GLSL in priv/shaders IS committed)
@@ -38,4 +38,4 @@ shaders/target/
 .DS_Store
 
 # Unpacked hex tarball, not source
-/wx_mvu/
+/cedar/

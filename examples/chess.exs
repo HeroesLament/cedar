@@ -26,17 +26,17 @@
 # the half of the library the flat board does not exercise: perspective, a
 # camera, Lambert shading, a depth buffer, and a redraw every frame.
 
-# wx_mvu narrates every intent and wx event at debug level. At 30 fps with the
+# cedar narrates every intent and wx event at debug level. At 30 fps with the
 # mouse moving that buries anything worth reading.
 Logger.configure(level: :info)
 
 defmodule ChessDemo do
   @moduledoc false
 
-  use WxMVU.Scene
+  use Cedar.Scene
 
-  alias WxMVU.Font
-  alias WxMVU.Math
+  alias Cedar.Font
+  alias Cedar.Math
 
   # The board fits itself to whatever the canvas turns out to be, rather than
   # assuming the size it asked for. A sizer is entitled to give a widget a
@@ -94,7 +94,7 @@ defmodule ChessDemo do
       # The orbit angle, advanced on a timer. A camera angle is a handful of
       # bytes, so driving it through the model and the differ costs one
       # uniform write per frame - which is the honest way to animate here.
-      # Sample data at this rate would not be; see WxMVU.Visual.send_data/2.
+      # Sample data at this rate would not be; see Cedar.Visual.send_data/2.
       angle: 0.0,
       showing: {:white, :king},
       status: "Click a piece, then click where it should go.",
@@ -153,7 +153,7 @@ defmodule ChessDemo do
     end
   end
 
-  # wx_mvu connects :close_window without `skip: true`, so a wx frame does not
+  # cedar connects :close_window without `skip: true`, so a wx frame does not
   # close itself - the scene is asked first and decides. That is what lets an
   # application refuse, or prompt, or save on the way out. The cost is that a
   # scene which ignores the event has a window whose close button does
@@ -255,7 +255,7 @@ defmodule ChessDemo do
       # board's width. Everything still works if that stops being true - the
       # layout follows the surface - it just stops being square.
       {:ensure_window, :main,
-       title: "wx_mvu — chess", size: {@initial + @preview, @initial + 130}},
+       title: "cedar — chess", size: {@initial + @preview, @initial + 130}},
       {:ensure_panel, :root, :main, []},
       {:ensure_widget, :status, :static_text, :root, label: model.status},
       {:set, :status, label: model.status},
@@ -524,7 +524,7 @@ defmodule ChessDemo do
   end
 end
 
-WxMVU.start_scene(ChessDemo)
+Cedar.start_scene(ChessDemo)
 
 # `mix run` would exit immediately otherwise, taking the window with it.
 unless IEx.started?() do

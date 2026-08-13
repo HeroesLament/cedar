@@ -1,7 +1,7 @@
 //! Bakes a signed distance field font atlas.
 //!
 //! A maintainer tool, in the same sense as `cargo-gpu` and `naga`: its output
-//! is committed under `priv/fonts/`, and nothing that consumes wx_mvu ever
+//! is committed under `priv/fonts/`, and nothing that consumes cedar ever
 //! runs it. That is the same boundary the shader pipeline draws, for the same
 //! reason — getting a glyph outline into a texture needs a font rasterizer,
 //! and requiring one at `mix deps.get` time would make Rust a consumer
@@ -319,7 +319,7 @@ fn distance_to_seeds(seed: &[bool], width: u32, height: u32) -> Vec<f64> {
 /// range spans `±range` pixels.
 ///
 /// The sign convention — inside above 0.5 — is what `sdf_coverage` in
-/// `wx-mvu-shader-core` assumes, and the two must agree or every glyph renders
+/// `cedar-shader-core` assumes, and the two must agree or every glyph renders
 /// as its own hole.
 fn signed_distance_field(coverage: &[u8], width: u32, height: u32, range: f32) -> Vec<u8> {
     let inside: Vec<bool> = coverage.iter().map(|&c| c >= 128).collect();

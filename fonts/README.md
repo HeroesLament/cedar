@@ -3,7 +3,7 @@
 Baked signed distance field atlases for the `:text` visual.
 
 The arrangement mirrors `shaders/`: a maintainer tool produces an artifact,
-the artifact is committed, and **consumers of wx_mvu never run the tool**. A
+the artifact is committed, and **consumers of cedar never run the tool**. A
 `mix deps.get` yields working text with no Rust toolchain, no font file, and
 no image decoder anywhere in the dependency graph.
 
@@ -14,8 +14,8 @@ fonts/dejavu/DejaVuSans.ttf  ->  tools/atlas  ->  priv/fonts/dejavu-sans.font
 ## Rebuilding
 
 ```sh
-mix wx_mvu.fonts.build          # rebake from fonts/fonts.exs
-mix wx_mvu.fonts.build --check  # fail if the committed artifact has drifted
+mix cedar.fonts.build          # rebake from fonts/fonts.exs
+mix cedar.fonts.build --check  # fail if the committed artifact has drifted
 ```
 
 The `--check` form belongs in CI. A committed artifact nobody verifies is a
@@ -38,15 +38,15 @@ faster than either.
 A bitmap atlas is sharp at exactly one size; everything else is a blur or a
 staircase, and a viewport with a zoom control visits every size there is. A
 distance field stores how far each texel is from the glyph outline, so the
-edge can be reconstructed at any scale from one texture. `WxMVU.Font.px_range/2`
+edge can be reconstructed at any scale from one texture. `Cedar.Font.px_range/2`
 computes what the shader needs to know about the current size, and
-`sdf_coverage` in `wx-mvu-shader-core` turns a sample into coverage.
+`sdf_coverage` in `cedar-shader-core` turns a sample into coverage.
 
 ## Adding a font
 
 1. Put the file under `fonts/<family>/`, with its licence beside it.
 2. Add an entry to `fonts/fonts.exs`.
-3. `mix wx_mvu.fonts.build`.
+3. `mix cedar.fonts.build`.
 4. Commit both the source font and `priv/fonts/<name>.font`.
 
 Two constraints the manifest enforces, both found the hard way:

@@ -8,8 +8,8 @@
 #
 # Exits non-zero if anything fails to compile or link.
 
-alias WxMVU.GLCanvas.Draw.Std140
-alias WxMVU.Renderer.GL
+alias Cedar.GLCanvas.Draw.Std140
+alias Cedar.Renderer.GL
 alias WxEx.Constants.OpenGL
 
 defmodule Verify do
@@ -38,7 +38,7 @@ end
 Verify.section("Context")
 
 _wx = :wx.new()
-frame = :wxFrame.new(:wx.null(), -1, ~c"wx_mvu shader verify", size: {200, 100})
+frame = :wxFrame.new(:wx.null(), -1, ~c"cedar shader verify", size: {200, 100})
 
 # Request an explicit 4.1 core profile. Without this, macOS hands back a
 # legacy 2.1 context and every `#version 410 core` shader fails to compile.

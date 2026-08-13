@@ -1,9 +1,9 @@
-defmodule WxMVU.MixProject do
+defmodule Cedar.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :wx_mvu,
+      app: :cedar,
       version: "0.1.0",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -17,11 +17,11 @@ defmodule WxMVU.MixProject do
   def application do
     [
       extra_applications: [:logger, :wx],
-      mod: {WxMVU.Application, []}
+      mod: {Cedar.Application, []}
     ]
   end
 
-  # test/support carries WxMVU.GLCase, the shared OpenGL context for the :gl
+  # test/support carries Cedar.GLCase, the shared OpenGL context for the :gl
   # tagged tests. Only compiled in the test env so it never ships.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
@@ -45,7 +45,7 @@ defmodule WxMVU.MixProject do
       files: ~w(lib priv mix.exs README.md LICENSE fonts/dejavu/LICENSE),
       licenses: ["MIT"],
       links: %{
-        "GitHub" => "https://github.com/HeroesLament/wx_mvu"
+        "GitHub" => "https://github.com/HeroesLament/cedar"
       }
     ]
   end

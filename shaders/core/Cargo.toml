@@ -1,5 +1,5 @@
 [package]
-name = "wx-mvu-shader-core"
+name = "cedar-shader-core"
 version = "0.1.0"
 edition = "2021"
 publish = false

@@ -33,7 +33,7 @@
 use spirv_std::glam::{vec4, Vec2, Vec4};
 use spirv_std::spirv;
 use spirv_std::{Image, Sampler};
-use wx_mvu_shader_core::sdf_coverage;
+use cedar_shader_core::sdf_coverage;
 
 /// The distance field atlas: single-channel, sampled as f32.
 pub type Tex2d = Image!(2D, type=f32, sampled);

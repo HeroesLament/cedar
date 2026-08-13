@@ -1,5 +1,5 @@
 [package]
-name = "wx-mvu-atlas"
+name = "cedar-atlas"
 version = "0.1.0"
 edition = "2021"
 publish = false

@@ -1,8 +1,8 @@
-defmodule WxMVU.GLCase do
+defmodule Cedar.GLCase do
   @moduledoc """
   Test case for anything needing a real OpenGL 4.1 core context.
 
-      use WxMVU.GLCase
+      use Cedar.GLCase
 
   Tags the module `:gl`, which `test_helper.exs` excludes by default — these
   need a display, so they run explicitly:
@@ -26,25 +26,25 @@ defmodule WxMVU.GLCase do
 
   use ExUnit.CaseTemplate
 
-  alias WxMVU.Renderer.GL
+  alias Cedar.Renderer.GL
 
   using do
     quote do
       @moduletag :gl
 
-      import WxMVU.GLCase
+      import Cedar.GLCase
 
-      alias WxMVU.GLCanvas.Draw.{Colormap, Geometry, Program, Texture}
-      alias WxMVU.Renderer.GL
+      alias Cedar.GLCanvas.Draw.{Colormap, Geometry, Program, Texture}
+      alias Cedar.Renderer.GL
     end
   end
 
   setup_all do
     _wx = :wx.new()
-    frame = :wxFrame.new(:wx.null(), -1, ~c"wx_mvu tests", size: {160, 120})
+    frame = :wxFrame.new(:wx.null(), -1, ~c"cedar tests", size: {160, 120})
 
     # An explicit core-profile request. Without it macOS hands back a legacy
-    # 2.1 context in which none of wx_mvu's shaders will even compile.
+    # 2.1 context in which none of cedar's shaders will even compile.
     attribs = [
       1,
       4,

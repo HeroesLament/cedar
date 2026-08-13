@@ -1,10 +1,10 @@
-# WxMvu
+# Cedar
 
-[![GitHub](https://img.shields.io/badge/github-HeroesLament%2Fwx_mvu-black?logo=github)](https://github.com/HeroesLament/wx_mvu)
-[![Hex.pm](https://img.shields.io/hexpm/v/wx_mvu.svg)](https://hex.pm/packages/wx_mvu)
-[![Hex Docs](https://img.shields.io/hexpm/docs/wx_mvu.svg)](https://hexdocs.pm/wx_mvu)
-[![Build Status](https://github.com/HeroesLament/wx_mvu/actions/workflows/ci.yml/badge.svg)](https://github.com/HeroesLament/wx_mvu/actions)
-[![License](https://img.shields.io/hexpm/l/wx_mvu.svg)](https://github.com/HeroesLament/wx_mvu/blob/main/LICENSE)
+[![GitHub](https://img.shields.io/badge/github-HeroesLament%2Fcedar-black?logo=github)](https://github.com/HeroesLament/cedar)
+[![Hex.pm](https://img.shields.io/hexpm/v/cedar.svg)](https://hex.pm/packages/cedar)
+[![Hex Docs](https://img.shields.io/hexpm/docs/cedar.svg)](https://hexdocs.pm/cedar)
+[![Build Status](https://github.com/HeroesLament/cedar/actions/workflows/ci.yml/badge.svg)](https://github.com/HeroesLament/cedar/actions)
+[![License](https://img.shields.io/hexpm/l/cedar.svg)](https://github.com/HeroesLament/cedar/blob/main/LICENSE)
 
 MVU-based wxWidgets GUIs with integrated OpenGL rendering.
 
@@ -29,8 +29,8 @@ Developed against Erlang 28 and Elixir 1.19 on macOS.
 ## Try it
 
 ```sh
-git clone https://github.com/HeroesLament/wx_mvu
-cd wx_mvu
+git clone https://github.com/HeroesLament/cedar
+cd cedar
 mix deps.get
 mix run examples/chess.exs
 ```
@@ -44,14 +44,14 @@ declaration, with no GLSL, no buffers and no rendering code. See
 
 ## Overview
 
-WxMvu is a Model–View–Update framework for building native desktop applications
+Cedar is a Model–View–Update framework for building native desktop applications
 on the BEAM using wxWidgets.
 
 It enforces a strict separation between immutable application state, pure update
 logic, and declarative UI structure, while confining all direct wxWidgets calls
 to a dedicated renderer process.
 
-In addition to standard widgets, WxMvu provides a managed OpenGL canvas model for
+In addition to standard widgets, Cedar provides a managed OpenGL canvas model for
 high-throughput, real-time rendering such as scopes, waterfalls, and custom
 visualizations. OpenGL canvases own their rendering loop and context, receive
 data directly via message passing, and intentionally bypass MVU diffing.
@@ -88,7 +88,7 @@ end
 Sample data bypasses MVU, as it does for canvases:
 
 ```elixir
-WxMVU.Visual.send_data(:waterfall, {:row, bins})
+Cedar.Visual.send_data(:waterfall, {:row, bins})
 ```
 
 Configuration flows the other way. Dragging that slider changes `model.db_floor`,
@@ -117,11 +117,11 @@ colormap:
 ```
 
 ```elixir
-WxMVU.Visual.send_data(:viewport, {:mesh, WxMVU.Visual.Mesh.box({2.0, 0.4, 0.4})})
+Cedar.Visual.send_data(:viewport, {:mesh, Cedar.Visual.Mesh.box({2.0, 0.4, 0.4})})
 ```
 
 Orbiting that camera changes two tuples in the model; the differ turns it into
-a 144-byte uniform write, and the mesh on the GPU is not touched. `WxMVU.Math`
+a 144-byte uniform write, and the mesh on the GPU is not touched. `Cedar.Math`
 supplies the matrices — column-major, degrees, right-handed — if you want to
 build a transform yourself.
 
@@ -136,10 +136,10 @@ Labels are the same shape again, and need nothing installed:
 
 One atlas serves every size — the glyph is stored as a distance to its outline
 rather than as coverage, so a 200pt title and an 8px axis label come from the
-same 25 KB file. `WxMVU.Font.measure/3` sizes a control around a string without
+same 25 KB file. `Cedar.Font.measure/3` sizes a control around a string without
 drawing it.
 
-Your own visual implements `WxMVU.Visual` and is referenced by module, matching
+Your own visual implements `Cedar.Visual` and is referenced by module, matching
 how `:ensure_gl_canvas` takes one:
 
 ```elixir
@@ -147,7 +147,7 @@ how `:ensure_gl_canvas` takes one:
   module: MyApp.Visuals.PolarRadar, opts: [sweep_rate: 30]}
 ```
 
-`WxMVU.GLCanvas` remains for cases a visual does not cover — it is what visuals
+`Cedar.GLCanvas` remains for cases a visual does not cover — it is what visuals
 are built on, and nothing about it has been removed.
 
 ## Shaders
@@ -163,7 +163,7 @@ shaders/<name>/src/lib.rs  ->  SPIR-V  ->  GLSL 410  ->  priv/shaders/*.{vert,fr
 Rust, the pinned nightly, `cargo-gpu` and `naga` are maintainer tools only, and
 none of them appears in your dependency graph.
 
-Applications do not write GLSL either. If you are adding a shader to wx_mvu
+Applications do not write GLSL either. If you are adding a shader to cedar
 itself, see `shaders/README.md` for the build commands and the OpenGL 4.1
 constraints the source has to respect.
 
@@ -180,11 +180,11 @@ DejaVu Sans ships as the default. Its licence travels with it in the package.
 
 ## Installation
 
-Add `wx_mvu` to your dependencies in `mix.exs`:
+Add `cedar` to your dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:wx_mvu, "~> 0.1.0"}
+    {:cedar, "~> 0.1.0"}
   ]
 end

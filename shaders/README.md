@@ -1,6 +1,6 @@
-# wx_mvu shader workspace
+# cedar shader workspace
 
-Source of truth for every shader wx_mvu ships. **No hand-written GLSL.**
+Source of truth for every shader cedar ships. **No hand-written GLSL.**
 
 ```
 core/src/lib.rs      shader maths, no spirv-std, tests on stable
@@ -11,20 +11,20 @@ core/src/lib.rs      shader maths, no spirv-std, tests on stable
         │  naga --profile core410
         ▼
    generated GLSL
-        │  WxMVU.Shaders.Rewriter          (naga's names -> declared names)
+        │  Cedar.Shaders.Rewriter          (naga's names -> declared names)
         ▼
 priv/shaders/*.{vert,frag}                 committed, shipped in the package
 ```
 
-Consumers of wx_mvu build none of this. They get the committed GLSL from Hex and
+Consumers of cedar build none of this. They get the committed GLSL from Hex and
 need no Rust toolchain at all, which is why `priv` is on the `files:` allowlist
 in `mix.exs`.
 
 ## Commands
 
-    mix wx_mvu.shaders.build           # regenerate priv/shaders
-    mix wx_mvu.shaders.build --check   # fail if committed artifacts have drifted
-    mix wx_mvu.shaders.test            # host-side maths, stable then nightly
+    mix cedar.shaders.build           # regenerate priv/shaders
+    mix cedar.shaders.build --check   # fail if committed artifacts have drifted
+    mix cedar.shaders.test            # host-side maths, stable then nightly
     mix run scripts/verify_shaders.exs # compile and link on the local driver
     mix test --only gl                 # render and check pixels
 
@@ -44,7 +44,7 @@ touches the stable toolchain used by `native/`.
    the shader crate does not.
 3. Add an entry to `shaders.exs` naming the uniform block, its fields **in
    declaration order**, and any sampler bindings.
-4. `mix wx_mvu.shaders.build`, then `verify_shaders`, then a `:gl` test.
+4. `mix cedar.shaders.build`, then `verify_shaders`, then a `:gl` test.
 
 Adding the declaration in three places — Rust struct, `shaders.exs`, and the
 `Program` module — is deliberate. Each checks the others: a field-count mismatch
@@ -63,7 +63,7 @@ compiler rejects at a user's runtime.
 - **No storage buffers or runtime-sized arrays.** Those need SSBOs (GL 4.3+).
 - **No compute, no subgroup ops, no image atomics.**
 - **No `layout(binding = ...)`.** That qualifier is GL 4.2; block and sampler
-  bindings are resolved at runtime by `WxMVU.GLCanvas.Draw.Program`.
+  bindings are resolved at runtime by `Cedar.GLCanvas.Draw.Program`.
 
 ## Known constraints, found the hard way
 
@@ -79,7 +79,7 @@ wants. The same applies to any `Vec3` you need tightly controlled.
 **`glam`'s `normalize_or_zero` cannot be used at all.**
 It guards with `is_finite()`, which compiles to a comparison against an infinity
 constant, and naga refuses to translate a module containing one: *"Float literal
-is infinite"*. Use `wx_mvu_shader_core::normalize2` / `normalize3`, which guard
+is infinite"*. Use `cedar_shader_core::normalize2` / `normalize3`, which guard
 by comparing a squared length against zero. Anything else reaching for
 `is_finite` will hit the same wall.
 
@@ -112,7 +112,7 @@ See `grid_line_alpha`.
 Shader crates are `no_std` only under `target_arch = "spirv"`, so they also build
 for the host and their pure functions can be unit tested without a GPU:
 
-    mix wx_mvu.shaders.test
+    mix cedar.shaders.test
 
 This needs the **pinned nightly**, not stable: `spirv-std` uses unstable features
 (`cfg_select!`), so even a host build of a crate depending on it fails on stable
@@ -126,8 +126,8 @@ Four layers, none of which subsumes another:
 
 | Layer | Catches | Needs |
 |---|---|---|
-| `mix wx_mvu.shaders.test` | wrong maths | nothing |
-| `mix wx_mvu.shaders.build --check` | artifacts out of sync with source | toolchain |
+| `mix cedar.shaders.test` | wrong maths | nothing |
+| `mix cedar.shaders.build --check` | artifacts out of sync with source | toolchain |
 | `scripts/verify_shaders.exs` | GLSL the driver rejects | a GL context |
 | `mix test --only gl` | shaders that link and draw the wrong thing | a GL context |
 

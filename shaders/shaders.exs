@@ -1,4 +1,4 @@
-# Shader manifest for `mix wx_mvu.shaders.build`.
+# Shader manifest for `mix cedar.shaders.build`.
 #
 # Two things live here: the toolchain pin, and the naming contract between the
 # Rust source and the Elixir runtime.
@@ -8,7 +8,7 @@
 # rust-gpu ships alphas years apart and its own README says to build from the
 # `main` branch, so there is no useful semver to depend on - the pin is a git
 # revision. Bumping it is a deliberate, tested step: regenerate, run
-# `mix wx_mvu.shaders.test`, then `mix run scripts/verify_shaders.exs` on macOS,
+# `mix cedar.shaders.test`, then `mix run scripts/verify_shaders.exs` on macOS,
 # then review the artifact diff. It is not something `cargo update` should do
 # to you, which is why shaders/Cargo.lock is committed.
 #
@@ -17,7 +17,7 @@
 # naga discards every name from the Rust and substitutes its own counters, so
 # the build rewrites them back to what is declared here. These names must match
 # the `blocks:` and `samplers:` declarations in whichever
-# `WxMVU.GLCanvas.Draw.Program` module loads the shader.
+# `Cedar.GLCanvas.Draw.Program` module loads the shader.
 #
 # A mismatch in field *count* fails the build. A mismatch in field *order* is
 # caught at load time by the driver's GL_UNIFORM_BLOCK_DATA_SIZE cross-check
@@ -48,8 +48,8 @@
   # Crates that must build and test on *stable* Rust. They carry the shader
   # maths and must never acquire a spirv-std dependency, which would drag the
   # nightly requirement into code that has no need of it.
-  # `mix wx_mvu.shaders.test` runs these on stable specifically to catch that.
-  stable_crates: ["wx-mvu-shader-core"],
+  # `mix cedar.shaders.test` runs these on stable specifically to catch that.
+  stable_crates: ["cedar-shader-core"],
 
   shaders: [
     %{

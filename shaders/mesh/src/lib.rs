@@ -12,14 +12,14 @@
 //!   * `mat3` is **48**, not 36 — each column is padded out to a `vec4`
 //!   * `vec3` occupies 12 bytes but forces the next field to a 16-byte boundary
 //!
-//! `WxMVU.GLCanvas.Draw.Std140` implements all three, and until this shader
+//! `Cedar.GLCanvas.Draw.Std140` implements all three, and until this shader
 //! existed none of them had been checked against a real driver.
 
 #![cfg_attr(target_arch = "spirv", no_std)]
 
 use spirv_std::glam::{vec3, vec4, Mat3A, Mat4, Vec3, Vec3A, Vec4};
 use spirv_std::spirv;
-use wx_mvu_shader_core::{lambert_intensity, normalize3};
+use cedar_shader_core::{lambert_intensity, normalize3};
 
 /// Uniform block. Field order is significant and mirrored in
 /// `shaders/shaders.exs` and the `Program` declaration.

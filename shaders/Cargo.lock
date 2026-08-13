@@ -15,6 +15,50 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
+name = "cedar-shader-core"
+version = "0.1.0"
+
+[[package]]
+name = "cedar-shader-grid"
+version = "0.1.0"
+dependencies = [
+ "cedar-shader-core",
+ "spirv-std",
+]
+
+[[package]]
+name = "cedar-shader-image"
+version = "0.1.0"
+dependencies = [
+ "cedar-shader-core",
+ "spirv-std",
+]
+
+[[package]]
+name = "cedar-shader-line"
+version = "0.1.0"
+dependencies = [
+ "cedar-shader-core",
+ "spirv-std",
+]
+
+[[package]]
+name = "cedar-shader-mesh"
+version = "0.1.0"
+dependencies = [
+ "cedar-shader-core",
+ "spirv-std",
+]
+
+[[package]]
+name = "cedar-shader-text"
+version = "0.1.0"
+dependencies = [
+ "cedar-shader-core",
+ "spirv-std",
+]
+
+[[package]]
 name = "glam"
 version = "0.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -102,47 +146,3 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
-
-[[package]]
-name = "wx-mvu-shader-core"
-version = "0.1.0"
-
-[[package]]
-name = "wx-mvu-shader-grid"
-version = "0.1.0"
-dependencies = [
- "spirv-std",
- "wx-mvu-shader-core",
-]
-
-[[package]]
-name = "wx-mvu-shader-image"
-version = "0.1.0"
-dependencies = [
- "spirv-std",
- "wx-mvu-shader-core",
-]
-
-[[package]]
-name = "wx-mvu-shader-line"
-version = "0.1.0"
-dependencies = [
- "spirv-std",
- "wx-mvu-shader-core",
-]
-
-[[package]]
-name = "wx-mvu-shader-mesh"
-version = "0.1.0"
-dependencies = [
- "spirv-std",
- "wx-mvu-shader-core",
-]
-
-[[package]]
-name = "wx-mvu-shader-text"
-version = "0.1.0"
-dependencies = [
- "spirv-std",
- "wx-mvu-shader-core",
-]

@@ -18,7 +18,7 @@
 
 use spirv_std::glam::{vec2, vec4, Vec2, Vec4};
 use spirv_std::spirv;
-use wx_mvu_shader_core::perpendicular2;
+use cedar_shader_core::perpendicular2;
 
 /// Uniform block. Field order is significant and mirrored in
 /// `shaders/shaders.exs` and the `Program` declaration.
