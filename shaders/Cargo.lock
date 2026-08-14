@@ -51,6 +51,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cedar-shader-shape"
+version = "0.1.0"
+dependencies = [
+ "cedar-shader-core",
+ "spirv-std",
+]
+
+[[package]]
 name = "cedar-shader-text"
 version = "0.1.0"
 dependencies = [

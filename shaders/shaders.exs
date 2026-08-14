@@ -100,6 +100,32 @@
       }
     },
     %{
+      name: "shape",
+      crate: "shape",
+      entry_points: [vert: "main_vs", frag: "main_fs"],
+      block: %{
+        name: "ShapeUniforms",
+        # 7 vec4 (112) + 2 vec2 (16) + 5 f32 (20) = 148, rounded to 160.
+        fields: [
+          :fill_color,
+          :fill_color1,
+          :stroke_color,
+          :radii,
+          :rect,
+          :gradient,
+          :wedge,
+          :viewport,
+          :arc,
+          :stroke_width,
+          :shape,
+          :gradient_kind,
+          :inset,
+          :pixel_scale
+        ]
+      },
+      samplers: %{}
+    },
+    %{
       name: "mesh",
       crate: "mesh",
       entry_points: [vert: "main_vs", frag: "main_fs"],

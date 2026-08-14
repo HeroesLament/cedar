@@ -168,6 +168,7 @@ defmodule Cedar.Visual do
   def resolve(:line), do: Cedar.Visual.Line
   def resolve(:grid), do: Cedar.Visual.Grid
   def resolve(:mesh), do: Cedar.Visual.Mesh
+  def resolve(:shape), do: Cedar.Visual.Shape
   def resolve(:text), do: Cedar.Visual.Text
   def resolve(:layers), do: Cedar.Visual.Layers
   def resolve(:viewport), do: Cedar.Visual.Viewport
@@ -175,7 +176,8 @@ defmodule Cedar.Visual do
   def resolve(other) do
     raise ArgumentError,
           "unknown visual #{inspect(other)}. Built-in visuals: " <>
-            "[:image, :line, :grid, :mesh, :text, :layers, :viewport]. For your " <>
+            "[:image, :line, :grid, :mesh, :shape, :text, :layers, :viewport]. For " <>
+            "your " <>
             "own, use " <>
             ":custom with " <>
             "module: YourModule."

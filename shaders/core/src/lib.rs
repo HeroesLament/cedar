@@ -284,6 +284,270 @@ pub fn sdf_coverage(distance: f32, px_range: f32) -> f32 {
     clamp_unit((distance - 0.5) * px_range + 0.5)
 }
 
+// ==========================================================================
+// Analytic 2D shapes
+// ==========================================================================
+//
+// Every shape below is a signed distance function: negative inside, positive
+// outside, zero on the outline, and measured in the same units as the point
+// passed in. The `:shape` visual works in pixels, so one unit of distance is
+// one pixel, which is what makes `shape_coverage` a plain subtraction with no
+// derivative anywhere.
+//
+// That is the whole reason to draw UI this way. A rounded rectangle is not
+// tessellated into a fan of triangles that has to be rebuilt whenever a corner
+// radius changes; it is a formula evaluated per fragment, exact at any size,
+// antialiased for free, and stroked by evaluating the same formula twice.
+
+/// Coverage of a shape whose signed distance is expressed in **pixels**.
+///
+/// Box-filter estimate: the fraction of a one-pixel square the shape covers,
+/// assuming the edge is locally straight. Identical in spirit to
+/// `grid_line_alpha` and `sdf_coverage`, and identical in motivation - a linear
+/// ramp across the pixel makes hairline strokes vanish rather than merely
+/// soften.
+///
+/// Takes no derivative, unlike the usual `fwidth`-based formulation. It does
+/// not need one: the distance is already in pixels, so the rate of change
+/// across a pixel is one by construction. That keeps the fragment shader free
+/// of derivative instructions - which are the part of the SPIR-V-to-GLSL
+/// translation most likely to shift between naga versions - and makes coverage
+/// exactly reproducible in a host-side test.
+#[inline]
+pub fn shape_coverage(distance: f32) -> f32 {
+    clamp_unit(0.5 - distance)
+}
+
+/// Turns a fill distance into a stroke distance.
+///
+/// The outline of a shape is the set of points within `half_width` of its
+/// zero contour, which is exactly `abs(d) - half_width`. So a stroke costs one
+/// subtraction on top of a fill, and stroke and fill can never disagree about
+/// where the edge is - they are the same number.
+#[inline]
+pub fn stroke_distance(distance: f32, half_width: f32) -> f32 {
+    abs_f32(distance) - half_width
+}
+
+/// Signed distance to an axis-aligned rounded box centred on the origin.
+///
+/// `radius` is the corner radius for the quadrant `(px, py)` falls in - see
+/// `quadrant_radius` - and is clamped to half the shorter side, so an absurd
+/// radius degrades to a stadium rather than turning inside out.
+///
+/// Covers more primitives than its name suggests. A zero radius is a
+/// rectangle. A square with radius equal to half its side is an exact circle,
+/// not an approximation of one, which is why the `:shape` visual has no
+/// separate circle path.
+#[inline]
+pub fn rounded_box_distance(px: f32, py: f32, half_w: f32, half_h: f32, radius: f32) -> f32 {
+    let limit = if half_w < half_h { half_w } else { half_h };
+    let r = if radius > limit { limit } else { radius };
+    let r = if r < 0.0 { 0.0 } else { r };
+
+    let qx = abs_f32(px) - half_w + r;
+    let qy = abs_f32(py) - half_h + r;
+
+    let ax = if qx > 0.0 { qx } else { 0.0 };
+    let ay = if qy > 0.0 { qy } else { 0.0 };
+
+    let outside = sqrt_f32(ax * ax + ay * ay);
+    let inside = {
+        let m = if qx > qy { qx } else { qy };
+        if m < 0.0 {
+            m
+        } else {
+            0.0
+        }
+    };
+
+    outside + inside - r
+}
+
+/// Picks the corner radius for the quadrant a point falls in.
+///
+/// Corners are named clockwise from the top left, matching CSS and the screen's
+/// Y-down convention: a positive `py` is below the centre.
+#[inline]
+pub fn quadrant_radius(
+    px: f32,
+    py: f32,
+    top_left: f32,
+    top_right: f32,
+    bottom_right: f32,
+    bottom_left: f32,
+) -> f32 {
+    if py < 0.0 {
+        if px < 0.0 {
+            top_left
+        } else {
+            top_right
+        }
+    } else if px < 0.0 {
+        bottom_left
+    } else {
+        bottom_right
+    }
+}
+
+/// Signed distance to an axis-aligned ellipse centred on the origin.
+///
+/// An approximation, deliberately. The exact signed distance to an ellipse has
+/// no closed form - it needs a root of a quartic, solved iteratively - and a
+/// loop in a fragment shader costs far more than the error is worth at UI
+/// sizes. This is the standard gradient-scaled form, which is exact on the
+/// axes and errs by well under a pixel elsewhere for the aspect ratios a UI
+/// produces.
+///
+/// Degenerate radii return the distance to the centre rather than dividing by
+/// zero: an ellipse can reach zero width through a layout animation, and it
+/// must fade out rather than fill the viewport with `NaN`.
+#[inline]
+pub fn ellipse_distance(px: f32, py: f32, rx: f32, ry: f32) -> f32 {
+    if rx <= 0.0 || ry <= 0.0 {
+        return sqrt_f32(px * px + py * py);
+    }
+
+    let ux = px / rx;
+    let uy = py / ry;
+    let k1 = sqrt_f32(ux * ux + uy * uy);
+
+    let vx = px / (rx * rx);
+    let vy = py / (ry * ry);
+    let k2 = sqrt_f32(vx * vx + vy * vy);
+
+    if k2 <= 0.0 {
+        // Dead centre. The nearest point on the outline is the shorter radius
+        // away, and the point is inside, so the distance is negative.
+        return if rx < ry { -rx } else { -ry };
+    }
+
+    k1 * (k1 - 1.0) / k2
+}
+
+/// Signed distance to a pie slice centred on the origin, opening along +Y.
+///
+/// `sin_half` and `cos_half` are the sine and cosine of *half* the slice's
+/// aperture, computed by the host. The point is expected to have been rotated
+/// into the slice's frame by `rotate2` first.
+///
+/// No trigonometry appears here or in the shader. Every angle a caller cares
+/// about is turned into a sine and a cosine once, on the CPU, per draw call -
+/// rather than per fragment, and rather than relying on `atan2`, whose
+/// precision and branch-cut handling vary across drivers.
+#[inline]
+pub fn pie_distance(px: f32, py: f32, sin_half: f32, cos_half: f32, radius: f32) -> f32 {
+    // Mirrored about X so only half the wedge has to be considered.
+    let px = abs_f32(px);
+
+    // Distance to the bounding disc.
+    let disc = sqrt_f32(px * px + py * py) - radius;
+
+    // Distance to the straight edge, as a segment from the origin outwards.
+    let dot = px * sin_half + py * cos_half;
+    let t = if dot < 0.0 {
+        0.0
+    } else if dot > radius {
+        radius
+    } else {
+        dot
+    };
+
+    let ex = px - sin_half * t;
+    let ey = py - cos_half * t;
+    let edge = sqrt_f32(ex * ex + ey * ey);
+
+    // Sign of the edge term: positive outside the wedge, negative inside.
+    let side = cos_half * px - sin_half * py;
+    let edge = if side > 0.0 { edge } else { -edge };
+
+    if disc > edge {
+        disc
+    } else {
+        edge
+    }
+}
+
+/// Signed distance to an arc - a band of a ring - centred on the origin and
+/// opening along +Y.
+///
+/// `mid_radius` is the centreline of the band and `half_thickness` its half
+/// width, so an arc is stroked by construction rather than by outlining a fill.
+/// As with `pie_distance`, the point arrives already rotated and the aperture
+/// arrives as a sine and cosine.
+#[inline]
+pub fn arc_distance(
+    px: f32,
+    py: f32,
+    sin_half: f32,
+    cos_half: f32,
+    mid_radius: f32,
+    half_thickness: f32,
+) -> f32 {
+    let px = abs_f32(px);
+
+    let within_wedge = cos_half * px <= sin_half * py;
+
+    let d = if within_wedge {
+        // Inside the angular span: distance to the centreline circle.
+        abs_f32(sqrt_f32(px * px + py * py) - mid_radius)
+    } else {
+        // Past the end: distance to the cap centre, which rounds the ends.
+        let cx = sin_half * mid_radius;
+        let cy = cos_half * mid_radius;
+        let ex = px - cx;
+        let ey = py - cy;
+        sqrt_f32(ex * ex + ey * ey)
+    };
+
+    d - half_thickness
+}
+
+/// Rotates a point by a precomputed cosine and sine.
+///
+/// Separate from the shape functions because the shapes are all defined in a
+/// canonical orientation and rotated into place, rather than each carrying its
+/// own angle handling.
+#[inline]
+pub fn rotate2(px: f32, py: f32, cos_t: f32, sin_t: f32) -> (f32, f32) {
+    (px * cos_t - py * sin_t, px * sin_t + py * cos_t)
+}
+
+/// Position along a linear gradient, in `[0, 1]`.
+///
+/// The projection of the point onto the axis from `(x0, y0)` to `(x1, y1)`,
+/// clamped. A zero-length axis yields `0.0` rather than `NaN` - reachable by
+/// animating a gradient's endpoints together.
+#[inline]
+pub fn linear_gradient_t(px: f32, py: f32, x0: f32, y0: f32, x1: f32, y1: f32) -> f32 {
+    let ax = x1 - x0;
+    let ay = y1 - y0;
+    let len_sq = ax * ax + ay * ay;
+
+    if len_sq <= 0.0 {
+        return 0.0;
+    }
+
+    clamp_unit(((px - x0) * ax + (py - y0) * ay) / len_sq)
+}
+
+/// Position along a radial gradient, in `[0, 1]`.
+///
+/// Distance from the centre over the radius, clamped. A zero radius yields
+/// `1.0`, so a collapsed radial gradient reads as its outer colour rather than
+/// flickering between the two.
+#[inline]
+pub fn radial_gradient_t(px: f32, py: f32, cx: f32, cy: f32, radius: f32) -> f32 {
+    if radius <= 0.0 {
+        return 1.0;
+    }
+
+    let dx = px - cx;
+    let dy = py - cy;
+
+    clamp_unit(sqrt_f32(dx * dx + dy * dy) / radius)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -615,5 +879,275 @@ mod tests {
             let w = wrap_unit(x);
             assert!(w >= 0.0 && w < 1.0, "wrap_unit({x}) = {w} out of [0, 1)");
         }
+    }
+}
+
+#[cfg(test)]
+mod shape_tests {
+    use super::*;
+
+    // Distances are in pixels, so "within a hundredth of a pixel" is the
+    // tolerance that matters visually rather than an arbitrary epsilon.
+    fn close(a: f32, b: f32) {
+        assert!((a - b).abs() < 0.01, "expected {b}, got {a}");
+    }
+
+    // ---- coverage ---------------------------------------------------------
+
+    #[test]
+    fn coverage_is_full_well_inside_and_zero_well_outside() {
+        assert_eq!(shape_coverage(-5.0), 1.0);
+        assert_eq!(shape_coverage(5.0), 0.0);
+    }
+
+    #[test]
+    fn coverage_is_half_exactly_on_the_edge() {
+        // The defining property of the box filter: a fragment centred on the
+        // outline is half covered. Anything else makes hairlines wrong.
+        assert_eq!(shape_coverage(0.0), 0.5);
+    }
+
+    #[test]
+    fn coverage_ramps_across_exactly_one_pixel() {
+        assert_eq!(shape_coverage(-0.5), 1.0);
+        assert_eq!(shape_coverage(0.5), 0.0);
+    }
+
+    // ---- rounded box ------------------------------------------------------
+
+    #[test]
+    fn rounded_box_is_negative_inside_and_positive_outside() {
+        assert!(rounded_box_distance(0.0, 0.0, 50.0, 20.0, 0.0) < 0.0);
+        assert!(rounded_box_distance(100.0, 0.0, 50.0, 20.0, 0.0) > 0.0);
+    }
+
+    #[test]
+    fn rounded_box_with_zero_radius_is_a_rectangle() {
+        // On the right edge, and one pixel outside it.
+        close(rounded_box_distance(50.0, 0.0, 50.0, 20.0, 0.0), 0.0);
+        close(rounded_box_distance(51.0, 0.0, 50.0, 20.0, 0.0), 1.0);
+        close(rounded_box_distance(49.0, 0.0, 50.0, 20.0, 0.0), -1.0);
+    }
+
+    #[test]
+    fn a_square_with_half_side_radius_is_an_exact_circle() {
+        // This is why there is no separate circle primitive. Points on the
+        // circle of radius 25 must all be at distance zero.
+        let r = 25.0;
+        close(rounded_box_distance(r, 0.0, r, r, r), 0.0);
+        close(rounded_box_distance(0.0, r, r, r, r), 0.0);
+
+        // And a diagonal point at radius r, which a rectangle would place
+        // well inside.
+        let d = r / core::f32::consts::SQRT_2;
+        close(rounded_box_distance(d, d, r, r, r), 0.0);
+    }
+
+    #[test]
+    fn rounded_box_clamps_an_oversized_radius() {
+        // Asking for a 500px radius on a 40px-tall box must give a stadium,
+        // not an inside-out shape. Reachable from a UI slider.
+        let d = rounded_box_distance(0.0, 0.0, 50.0, 20.0, 500.0);
+        assert!(d < 0.0, "centre must stay inside, got {d}");
+        close(d, -20.0);
+    }
+
+    #[test]
+    fn rounded_box_rejects_a_negative_radius() {
+        let clamped = rounded_box_distance(50.0, 0.0, 50.0, 20.0, -10.0);
+        let zero = rounded_box_distance(50.0, 0.0, 50.0, 20.0, 0.0);
+        close(clamped, zero);
+    }
+
+    #[test]
+    fn rounded_corner_is_further_out_than_a_square_corner() {
+        // The whole point of a radius: the corner is cut away, so a point at
+        // the old corner is now outside.
+        let square = rounded_box_distance(50.0, 20.0, 50.0, 20.0, 0.0);
+        let rounded = rounded_box_distance(50.0, 20.0, 50.0, 20.0, 10.0);
+
+        close(square, 0.0);
+        assert!(rounded > 0.0, "corner should be outside, got {rounded}");
+    }
+
+    // ---- per-corner radii -------------------------------------------------
+
+    #[test]
+    fn quadrant_radius_selects_by_sign_with_y_down() {
+        // Clockwise from top left, matching CSS. Negative y is up.
+        assert_eq!(quadrant_radius(-1.0, -1.0, 1.0, 2.0, 3.0, 4.0), 1.0);
+        assert_eq!(quadrant_radius(1.0, -1.0, 1.0, 2.0, 3.0, 4.0), 2.0);
+        assert_eq!(quadrant_radius(1.0, 1.0, 1.0, 2.0, 3.0, 4.0), 3.0);
+        assert_eq!(quadrant_radius(-1.0, 1.0, 1.0, 2.0, 3.0, 4.0), 4.0);
+    }
+
+    // ---- ellipse ----------------------------------------------------------
+
+    #[test]
+    fn ellipse_is_exact_on_its_axes() {
+        // The approximation's error is zero on the axes, so these are equalities
+        // in spirit even at a tight tolerance.
+        close(ellipse_distance(40.0, 0.0, 40.0, 20.0), 0.0);
+        close(ellipse_distance(0.0, 20.0, 40.0, 20.0), 0.0);
+        close(ellipse_distance(41.0, 0.0, 40.0, 20.0), 1.0);
+    }
+
+    #[test]
+    fn ellipse_centre_is_the_shorter_radius_inside() {
+        close(ellipse_distance(0.0, 0.0, 40.0, 20.0), -20.0);
+    }
+
+    #[test]
+    fn ellipse_with_a_collapsed_radius_does_not_produce_nan() {
+        // Reachable by animating a width to zero.
+        let d = ellipse_distance(10.0, 0.0, 0.0, 20.0);
+        assert!(d.is_finite(), "got {d}");
+        assert!(d >= 0.0);
+    }
+
+    #[test]
+    fn a_circular_ellipse_matches_a_circle() {
+        for (x, y) in [(30.0, 0.0), (0.0, 30.0), (21.213, 21.213)] {
+            close(ellipse_distance(x, y, 30.0, 30.0), 0.0);
+        }
+    }
+
+    // ---- pie --------------------------------------------------------------
+
+    // A quarter turn each side of +Y, i.e. the whole upper half plane.
+    fn quarter() -> (f32, f32) {
+        let half = core::f32::consts::FRAC_PI_4;
+        (half.sin(), half.cos())
+    }
+
+    #[test]
+    fn pie_contains_points_inside_its_wedge() {
+        let (s, c) = quarter();
+        assert!(pie_distance(0.0, 30.0, s, c, 50.0) < 0.0);
+    }
+
+    #[test]
+    fn pie_excludes_points_outside_its_wedge() {
+        let (s, c) = quarter();
+        // Directly opposite the opening.
+        assert!(pie_distance(0.0, -30.0, s, c, 50.0) > 0.0);
+    }
+
+    #[test]
+    fn pie_excludes_points_beyond_its_radius() {
+        let (s, c) = quarter();
+        assert!(pie_distance(0.0, 80.0, s, c, 50.0) > 0.0);
+        close(pie_distance(0.0, 50.0, s, c, 50.0), 0.0);
+    }
+
+    #[test]
+    fn pie_is_symmetric_about_its_axis() {
+        let (s, c) = quarter();
+        let left = pie_distance(-20.0, 30.0, s, c, 50.0);
+        let right = pie_distance(20.0, 30.0, s, c, 50.0);
+        close(left, right);
+    }
+
+    // ---- arc --------------------------------------------------------------
+
+    #[test]
+    fn arc_is_a_band_around_its_centreline() {
+        let (s, c) = quarter();
+        // On the centreline at radius 40, band half-thickness 5.
+        close(arc_distance(0.0, 40.0, s, c, 40.0, 5.0), -5.0);
+        // At the inner and outer edges.
+        close(arc_distance(0.0, 35.0, s, c, 40.0, 5.0), 0.0);
+        close(arc_distance(0.0, 45.0, s, c, 40.0, 5.0), 0.0);
+    }
+
+    #[test]
+    fn arc_is_hollow_at_the_centre() {
+        // The distinction from a pie: the middle is not filled.
+        let (s, c) = quarter();
+        assert!(arc_distance(0.0, 0.0, s, c, 40.0, 5.0) > 0.0);
+    }
+
+    #[test]
+    fn arc_ends_are_capped_not_infinite() {
+        let (s, c) = quarter();
+        // Well outside the angular span, at the centreline radius.
+        assert!(arc_distance(0.0, -40.0, s, c, 40.0, 5.0) > 0.0);
+    }
+
+    // ---- rotation ---------------------------------------------------------
+
+    #[test]
+    fn rotate2_by_a_quarter_turn() {
+        let (c, s) = (0.0, 1.0); // cos 90, sin 90
+        let (x, y) = rotate2(1.0, 0.0, c, s);
+        close(x, 0.0);
+        close(y, 1.0);
+    }
+
+    #[test]
+    fn rotate2_preserves_length() {
+        let angle: f32 = 0.7;
+        let (x, y) = rotate2(3.0, 4.0, angle.cos(), angle.sin());
+        close((x * x + y * y).sqrt(), 5.0);
+    }
+
+    // ---- gradients --------------------------------------------------------
+
+    #[test]
+    fn linear_gradient_runs_from_zero_to_one_along_its_axis() {
+        assert_eq!(linear_gradient_t(0.0, 0.0, 0.0, 0.0, 100.0, 0.0), 0.0);
+        assert_eq!(linear_gradient_t(100.0, 0.0, 0.0, 0.0, 100.0, 0.0), 1.0);
+        close(linear_gradient_t(50.0, 0.0, 0.0, 0.0, 100.0, 0.0), 0.5);
+    }
+
+    #[test]
+    fn linear_gradient_clamps_beyond_its_endpoints() {
+        assert_eq!(linear_gradient_t(-50.0, 0.0, 0.0, 0.0, 100.0, 0.0), 0.0);
+        assert_eq!(linear_gradient_t(150.0, 0.0, 0.0, 0.0, 100.0, 0.0), 1.0);
+    }
+
+    #[test]
+    fn linear_gradient_ignores_the_perpendicular_offset() {
+        // A point off the axis projects onto it; the gradient has no width.
+        close(
+            linear_gradient_t(50.0, 999.0, 0.0, 0.0, 100.0, 0.0),
+            linear_gradient_t(50.0, 0.0, 0.0, 0.0, 100.0, 0.0),
+        );
+    }
+
+    #[test]
+    fn a_collapsed_linear_gradient_does_not_divide_by_zero() {
+        let t = linear_gradient_t(10.0, 10.0, 5.0, 5.0, 5.0, 5.0);
+        assert!(t.is_finite());
+        assert_eq!(t, 0.0);
+    }
+
+    #[test]
+    fn radial_gradient_runs_from_centre_to_rim() {
+        assert_eq!(radial_gradient_t(0.0, 0.0, 0.0, 0.0, 50.0), 0.0);
+        assert_eq!(radial_gradient_t(50.0, 0.0, 0.0, 0.0, 50.0), 1.0);
+        close(radial_gradient_t(25.0, 0.0, 0.0, 0.0, 50.0), 0.5);
+    }
+
+    #[test]
+    fn a_collapsed_radial_gradient_reads_as_its_outer_colour() {
+        assert_eq!(radial_gradient_t(0.0, 0.0, 0.0, 0.0, 0.0), 1.0);
+    }
+
+    // ---- stroke -----------------------------------------------------------
+
+    #[test]
+    fn stroke_band_straddles_the_outline() {
+        // Fill distance zero means on the outline, which is the centre of the
+        // stroke band and therefore fully covered.
+        close(stroke_distance(0.0, 2.0), -2.0);
+        // Half a band width either side is the band's own edge.
+        close(stroke_distance(2.0, 2.0), 0.0);
+        close(stroke_distance(-2.0, 2.0), 0.0);
+    }
+
+    #[test]
+    fn stroke_is_symmetric_across_the_outline() {
+        close(stroke_distance(3.0, 2.0), stroke_distance(-3.0, 2.0));
     }
 }
