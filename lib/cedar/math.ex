@@ -82,7 +82,7 @@ defmodule Cedar.Math do
   @spec normalize(vec3()) :: vec3()
   def normalize({x, y, z} = v) do
     case __MODULE__.length(v) do
-      0.0 -> {0.0, 0.0, 0.0}
+      len when len == 0.0 -> {0.0, 0.0, 0.0}
       len -> {x / len, y / len, z / len}
     end
   end
@@ -167,7 +167,7 @@ defmodule Cedar.Math do
   @spec rotation(vec3(), number()) :: mat4()
   def rotation(axis, degrees) do
     case normalize(axis) do
-      {0.0, 0.0, 0.0} ->
+      {x, y, z} when x == 0.0 and y == 0.0 and z == 0.0 ->
         identity()
 
       {x, y, z} ->
@@ -369,7 +369,7 @@ defmodule Cedar.Math do
     tw = elem(t, 3) * x + elem(t, 7) * y + elem(t, 11) * z + elem(t, 15)
 
     case tw do
-      0.0 -> {tx, ty, tz}
+      w when w == 0.0 -> {tx, ty, tz}
       w -> {tx / w, ty / w, tz / w}
     end
   end

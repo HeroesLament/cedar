@@ -198,9 +198,13 @@ defmodule Cedar.Diff do
     if opts_equal?(old_opts, new_opts), do: [], else: [{:update_visual, id, type, new_opts}]
   end
 
-  defp diff_intent({_id, {:ensure_gl_canvas, id, parent, old_opts}, {:ensure_gl_canvas, id, parent, new_opts}}) do
-    # GL canvases don't support updates - they're either created or destroyed
-    # If opts changed significantly, we'd need to recreate, but for now just ignore
+  # A GL canvas cannot be updated in place — it is created or destroyed — so a
+  # change to its options produces no intent at all. Both option lists are named
+  # with underscores because they are genuinely ignored, which is worth seeing
+  # rather than hiding: a canvas whose size or attributes changed will keep the
+  # ones it was built with until something destroys it.
+  defp diff_intent({_id, {:ensure_gl_canvas, id, parent, _old_opts},
+                    {:ensure_gl_canvas, id, parent, _new_opts}}) do
     []
   end
 

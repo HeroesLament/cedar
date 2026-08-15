@@ -13,7 +13,6 @@ defmodule Cedar.GLCanvas.Server do
   use GenServer
   require Logger
 
-  alias Cedar.GLCanvas
   alias Cedar.GLCanvas.Context
   alias Cedar.GLCanvas.Event
   alias Cedar.Renderer.ComponentRegistry
