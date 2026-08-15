@@ -84,7 +84,8 @@ defmodule Cedar.Renderer.Intents.Layout do
 
   # Look up child widget/panel, including GL canvases
   defp find_child(child_id, state) do
-    Map.get(state.panels, child_id) ||
+    dock_host(state, child_id) ||
+      Map.get(state.panels, child_id) ||
       Map.get(state.widgets, child_id) ||
       # Notebooks live in their own map, and leaving them out here meant a
       # notebook could never appear in a layout spec: it added itself to the
@@ -101,6 +102,17 @@ defmodule Cedar.Renderer.Intents.Layout do
       :right -> wxALIGN_RIGHT()
       :expand -> wxEXPAND()
       _ -> wxEXPAND()
+    end
+  end
+  # A dock host is placed in a layout like any other child: it is a region of
+  # the window that happens to be arranged by a dock manager rather than by a
+  # sizer. Resolved from its own table rather than from `panels`, so that it
+  # cannot also be found as a *parent* for a widget — it has no sizer, on
+  # purpose, and a widget added to it would be laid out by nothing.
+  defp dock_host(state, child_id) do
+    case Map.get(state.dock_hosts, child_id) do
+      %{panel: panel} -> panel
+      nil -> nil
     end
   end
 end
