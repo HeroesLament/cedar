@@ -81,6 +81,15 @@ defmodule Cedar.Scene.Server do
     handle_scene_event(event, state)
   end
 
+  # A pane the user closed. It reaches handle_event/2 rather than handle_info/2
+  # because it is something a person did to the interface, which is what
+  # handle_event is for — the fact that it arrived from the renderer rather
+  # than from a widget is an implementation detail of docking.
+  def handle_info({:dock_pane, _pane_id, _change} = event, state) do
+    Logger.debug("Scene.Server(#{inspect(state.module)}): received #{inspect(event)}")
+    handle_scene_event(event, state)
+  end
+
   def handle_info(msg, state) do
     # Check if the scene module implements handle_info/2
     if function_exported?(state.module, :handle_info, 2) do

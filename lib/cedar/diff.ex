@@ -59,6 +59,8 @@ defmodule Cedar.Diff do
   def intent_id({:ensure_window, id, _opts}), do: {:window, id}
   def intent_id({:ensure_panel, id, _parent, _opts}), do: {:panel, id}
   def intent_id({:ensure_widget, id, type, _parent, _opts}), do: {:widget, id, type}
+  def intent_id({:ensure_dock_host, id, _parent, _opts}), do: {:dock_host, id}
+  def intent_id({:ensure_dock_pane, id, _host, _opts}), do: {:dock_pane, id}
   def intent_id({:ensure_gl_canvas, id, _parent, _opts}), do: {:gl_canvas, id}
   def intent_id({:ensure_visual, id, _type, _parent, _opts}), do: {:visual, id}
   def intent_id({:set, id, _props}), do: {:set, id}
@@ -101,6 +103,15 @@ defmodule Cedar.Diff do
   def diffable?({:add_menu_separator, _}), do: false
   def diffable?({:add_tool_separator, _}), do: false
   def diffable?({:layout, _, _}), do: false
+
+  # Commands, not declarations: send them with `Cedar.Renderer.render/1` when
+  # something happens. Like every other non-diffable intent they are re-applied
+  # on every render if a scene returns them from `view/1` — harmless for
+  # showing a pane, and for `:load_dock_layout` a loop that puts the panes back
+  # where they were saved a few times a second, undoing every drag the user
+  # makes. Restoring a layout is an event, not a fact about the model.
+  def diffable?({:load_dock_layout, _, _}), do: false
+  def diffable?({:update_dock_pane, _, _}), do: false
   def diffable?(_), do: true
 
   ## ------------------------------------------------------------------
@@ -119,6 +130,8 @@ defmodule Cedar.Diff do
   defp destroyable?({:ensure_widget, _, _, _, _}), do: true
   defp destroyable?({:ensure_panel, _, _, _}), do: true
   defp destroyable?({:ensure_window, _, _}), do: true
+  defp destroyable?({:ensure_dock_pane, _, _, _}), do: true
+  defp destroyable?({:ensure_dock_host, _, _, _}), do: true
   defp destroyable?({:ensure_gl_canvas, _, _, _}), do: true
   defp destroyable?({:ensure_visual, _, _, _, _}), do: true
   defp destroyable?(_), do: false
@@ -126,6 +139,8 @@ defmodule Cedar.Diff do
   defp to_destroy_intent({:ensure_widget, id, type, _, _}), do: {:destroy_widget, id, type}
   defp to_destroy_intent({:ensure_panel, id, _, _}), do: {:destroy_panel, id}
   defp to_destroy_intent({:ensure_window, id, _}), do: {:destroy_window, id}
+  defp to_destroy_intent({:ensure_dock_pane, id, _, _}), do: {:destroy_dock_pane, id}
+  defp to_destroy_intent({:ensure_dock_host, id, _, _}), do: {:destroy_dock_host, id}
   defp to_destroy_intent({:ensure_gl_canvas, id, _, _}), do: {:destroy_gl_canvas, id}
   defp to_destroy_intent({:ensure_visual, id, _, _, _}), do: {:destroy_visual, id}
 
@@ -133,7 +148,12 @@ defmodule Cedar.Diff do
   defp destroy_order({:gl_canvas, _}), do: 0
   defp destroy_order({:visual, _}), do: 0
   defp destroy_order({:panel, _}), do: 1
-  defp destroy_order({:window, _}), do: 2
+  defp destroy_order({:dock_pane, _}), do: 1
+  # After its panes and before its window. A wxAuiManager must be uninitialised
+  # while the window it manages still exists — the other order is an assertion
+  # failure inside wxWidgets with no Elixir stack trace to explain it.
+  defp destroy_order({:dock_host, _}), do: 2
+  defp destroy_order({:window, _}), do: 3
   defp destroy_order(_), do: 0
 
   ## ------------------------------------------------------------------
@@ -152,6 +172,8 @@ defmodule Cedar.Diff do
   defp creatable?({:ensure_window, _, _}), do: true
   defp creatable?({:ensure_panel, _, _, _}), do: true
   defp creatable?({:ensure_widget, _, _, _, _}), do: true
+  defp creatable?({:ensure_dock_host, _, _, _}), do: true
+  defp creatable?({:ensure_dock_pane, _, _, _}), do: true
   defp creatable?({:ensure_gl_canvas, _, _, _}), do: true
   defp creatable?({:ensure_visual, _, _, _, _}), do: true
   defp creatable?(_), do: false
@@ -205,6 +227,20 @@ defmodule Cedar.Diff do
   # ones it was built with until something destroys it.
   defp diff_intent({_id, {:ensure_gl_canvas, id, parent, _old_opts},
                     {:ensure_gl_canvas, id, parent, _new_opts}}) do
+    []
+  end
+
+  # Deliberately nothing. `dock:`, `best_size:` and the rest are where a pane
+  # goes the first time it is created; by the time a scene renders again the
+  # arrangement belongs to whoever is using the program, and a scene whose
+  # options happened to change must not yank a pane back out of the group the
+  # user dropped it into. Caption and visibility change through
+  # `{:update_dock_pane, id, opts}`, which says so out loud.
+  defp diff_intent({_id, {:ensure_dock_pane, id, host, _old}, {:ensure_dock_pane, id, host, _new}}) do
+    []
+  end
+
+  defp diff_intent({_id, {:ensure_dock_host, id, parent, _old}, {:ensure_dock_host, id, parent, _new}}) do
     []
   end
 

@@ -3,7 +3,7 @@ defmodule Cedar.Renderer.Intents do
   Routes intents to specific handler modules.
   """
 
-  alias Cedar.Renderer.Intents.{Window, Panel, Widgets, Layout, Properties, GLCanvas, Visual}
+  alias Cedar.Renderer.Intents.{Window, Panel, Widgets, Layout, Properties, GLCanvas, Visual, Dock}
 
   # Window operations
   def apply({:ensure_window, _, _} = intent, state), do: Window.apply(intent, state)
@@ -20,6 +20,15 @@ defmodule Cedar.Renderer.Intents do
   def apply({:ensure_widget, _, _, _, _} = intent, state), do: Widgets.apply(intent, state)
   def apply({:update_widget, _, _, _} = intent, state), do: Widgets.apply(intent, state)
   def apply({:destroy_widget, _, _} = intent, state), do: Widgets.apply(intent, state)
+
+  # Dock operations. A scene declares which panes exist; where they sit is the
+  # user's, and comes back out as a perspective rather than as scene state.
+  def apply({:ensure_dock_host, _, _, _} = intent, state), do: Dock.apply(intent, state)
+  def apply({:destroy_dock_host, _} = intent, state), do: Dock.apply(intent, state)
+  def apply({:load_dock_layout, _, _} = intent, state), do: Dock.apply(intent, state)
+  def apply({:ensure_dock_pane, _, _, _} = intent, state), do: Dock.apply(intent, state)
+  def apply({:update_dock_pane, _, _} = intent, state), do: Dock.apply(intent, state)
+  def apply({:destroy_dock_pane, _} = intent, state), do: Dock.apply(intent, state)
 
   # GL Canvas operations
   def apply({:ensure_gl_canvas, _, _, _} = intent, state), do: GLCanvas.apply(intent, state)

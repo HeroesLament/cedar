@@ -7,6 +7,8 @@ defmodule Cedar.Intent do
   """
 
   @type widget_id :: atom() | {atom(), term()}
+  @type host_id :: atom()
+  @type pane_id :: atom() | {atom(), term()}
   @type parent_id :: atom() | {atom(), term()}
   @type window_id :: atom()
 
@@ -24,8 +26,22 @@ defmodule Cedar.Intent do
           {:vbox, opts(), [widget_id()]}
           | {:hbox, opts(), [widget_id()]}
 
+  @typedoc """
+  Where a pane goes the FIRST time it is created, and never again.
+
+  `:centre` is what the docks surround: one per host, never floating, never
+  closable, no caption. Everything else is a side.
+  """
+  @type dock :: :left | :right | :top | :bottom | :centre
+
   @type t ::
           {:ensure_window, window_id(), opts()}
+          | {:ensure_dock_host, host_id(), parent_id(), opts()}
+          | {:ensure_dock_pane, pane_id(), host_id(), opts()}
+          | {:update_dock_pane, pane_id(), opts()}
+          | {:destroy_dock_pane, pane_id()}
+          | {:destroy_dock_host, host_id()}
+          | {:load_dock_layout, host_id(), binary()}
           | {:ensure_panel, widget_id(), parent_id(), opts()}
           | {:ensure_widget, widget_id(), widget_type(), parent_id(), opts()}
           | {:set, widget_id(), props :: keyword()}

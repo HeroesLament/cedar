@@ -68,6 +68,12 @@ defmodule Cedar.Renderer.Intents.Window do
         state
 
       frame ->
+        # Before the frame, not after. A wxAuiManager must be uninitialised
+        # while the window it manages still exists; the other order is an
+        # assertion failure inside wxWidgets, at exit, with no Elixir stack
+        # trace to say which window caused it.
+        state = Cedar.Renderer.Intents.Dock.teardown_for_window(window_id, state)
+
         :wxFrame.destroy(frame)
 
         %{
@@ -87,7 +93,11 @@ defmodule Cedar.Renderer.Intents.Window do
         :wxWindow.layout(window)
         :wxWindow.refresh(window)
         :wxWindow.update(window)
-        state
+
+        # Any dock host that gained panes since the last refresh. They were
+        # laid out when their panels were still empty; this is the first moment
+        # their contents exist. See Cedar.Renderer.Intents.Dock.refresh/1.
+        Cedar.Renderer.Intents.Dock.refresh(state)
     end
   end
 

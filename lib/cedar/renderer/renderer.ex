@@ -13,6 +13,7 @@ defmodule Cedar.Renderer do
   alias Cedar.Event
   alias Cedar.Renderer.ComponentRegistry
   alias Cedar.Renderer.Intents
+  alias Cedar.Renderer.Intents.Dock
 
   ## ------------------------------------------------------------------
   ## Public API
@@ -25,6 +26,36 @@ defmodule Cedar.Renderer do
 
   def render(intent) do
     GenServer.cast(__MODULE__, {:render, intent})
+  end
+
+  @doc """
+  The arrangement of a dock host, as an opaque string.
+
+  Save it with the user's preferences and hand it back with
+  `{:load_dock_layout, host, blob}`. Cedar does not inspect it and neither
+  should anything else — it is wxAUI's own format and it will change when
+  wxWidgets changes it.
+
+  A question rather than an intent, because it has an answer. Restoring is a
+  command and stays an intent.
+  """
+  @spec save_dock_layout(atom()) :: {:ok, binary()} | :error
+  def save_dock_layout(host_id) do
+    GenServer.call(__MODULE__, {:save_dock_layout, host_id})
+  end
+
+  @doc """
+  Which panes of a host are shown, floating or docked.
+
+  Asked for rather than pushed. This changes on every drag, and a scene that
+  received an event for each would be listening to the user rearrange their
+  furniture — which is not a thing an application is entitled to have an
+  opinion about. Ask when you have a reason to care, such as ticking a View
+  menu as it opens.
+  """
+  @spec dock_layout(atom()) :: {:ok, %{term() => map()}} | :error
+  def dock_layout(host_id) do
+    GenServer.call(__MODULE__, {:dock_layout, host_id})
   end
 
   def set_theme(theme_module) do
@@ -55,6 +86,8 @@ defmodule Cedar.Renderer do
        panels: %{},
        widgets: %{},
        notebooks: %{},
+       dock_hosts: %{},
+       dock_panes: %{},
        sizers: %{},
        widget_ids: %{},
        theme: Cedar.Theme,
@@ -73,6 +106,14 @@ defmodule Cedar.Renderer do
   end
 
   @impl true
+  def handle_call({:save_dock_layout, host_id}, _from, state) do
+    {:reply, Dock.save_perspective(host_id, state), state}
+  end
+
+  def handle_call({:dock_layout, host_id}, _from, state) do
+    {:reply, Dock.layout(host_id, state), state}
+  end
+
   def handle_call({:set_theme, theme_module}, _from, state) do
     {:reply, :ok, %{state | theme: theme_module}}
   end
@@ -82,7 +123,22 @@ defmodule Cedar.Renderer do
     {:reply, {state.theme, state.mode}, state}
   end
 
+  # Dock manager events, ahead of the generic wx clauses because they carry no
+  # widget id to look up: wxAUI reports the pane as a `wxAuiPaneInfo`, and the
+  # Erlang binding exposes no getter for the window inside it.
+  #
+  # Nothing has happened yet either — a close event arrives before wx hides
+  # anything — so this schedules a reconcile rather than acting. Comparing what
+  # is shown now against what was shown before identifies the pane without
+  # needing the event to say, and catches every other route to a hidden pane
+  # for free.
   @impl true
+  def handle_info({:wx, _, _obj, _user_data, event}, state)
+      when is_tuple(event) and elem(event, 0) == :wxAuiManager do
+    Enum.each(Map.keys(state.dock_hosts), &send(self(), {:dock_reconcile, &1}))
+    {:noreply, state}
+  end
+
   def handle_info({:wx, _, source, event}, state) do
     Logger.debug("Renderer wx event: source=#{inspect(source)} event=#{inspect(event)}")
     handle_wx_event(source, event, state)
@@ -94,6 +150,12 @@ defmodule Cedar.Renderer do
     )
 
     handle_wx_event(source, event, state)
+  end
+
+  def handle_info({:dock_reconcile, host_id}, state) do
+    {events, state} = Dock.reconcile(host_id, state)
+    Enum.each(events, &Cedar.Coordinator.broadcast_event/1)
+    {:noreply, state}
   end
 
   def handle_info({:dialog_result, _dialog_id, _result} = event, state) do
