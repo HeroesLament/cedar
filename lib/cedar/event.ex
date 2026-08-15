@@ -127,6 +127,24 @@ defmodule Cedar.Event do
     raw(widget_id, :page_changed, new_page)
   end
 
+  # A held button: pressed and released rather than clicked. See
+  # Cedar.Renderer.Intents.Widgets.Button on why leaving the button counts as a
+  # release.
+  #
+  # Read by index rather than matched as a whole tuple: the wxMouse record has
+  # grown before — this build sends fourteen elements where twelve were once
+  # assumed — and a pattern that matches the whole shape stops matching
+  # silently when it grows again.
+  def from_wx(widget_id, {:wx, _, _, event})
+      when is_tuple(event) and elem(event, 0) == :wxMouse do
+    case elem(event, 1) do
+      :left_down -> {:ui_event, widget_id, :press}
+      :left_up -> {:ui_event, widget_id, :release}
+      :leave_window -> {:ui_event, widget_id, :release}
+      other -> raw(widget_id, :mouse, other)
+    end
+  end
+
   # Window close
   def from_wx(widget_id, {:wx, _, _, {:wxClose, :close_window}}) do
     raw(widget_id, :close_window)

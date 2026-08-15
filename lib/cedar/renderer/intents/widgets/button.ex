@@ -34,7 +34,7 @@ defmodule Cedar.Renderer.Intents.Widgets.Button do
           border: 6
         )
 
-        :wxEvtHandler.connect(widget, :command_button_clicked)
+        connect(widget, Keyword.get(opts, :hold, false))
 
         :wxWindow.layout(parent)
 
@@ -45,6 +45,32 @@ defmodule Cedar.Renderer.Intents.Widgets.Button do
         }
       end
     end
+  end
+
+  # A button that is *held* rather than pressed.
+  #
+  # Some controls are a command — "save", "reset" — and a click is the whole
+  # story. A jog is not one of those: the machine moves for as long as the
+  # operator holds the button down, so the interesting facts are when the
+  # button went down and when it came up, and a click event reports neither.
+  #
+  # `:leave_window` is reported as a release on purpose. A finger that slides
+  # off a jog button is a finger that has let go, and the alternative — an axis
+  # that keeps moving because the pointer wandered two pixels while the button
+  # was down — is the exact failure the hold-to-run pattern exists to prevent.
+  # A spurious release costs nothing: stopping something already stopped is
+  # free, and stopping is always the safe direction to be wrong in.
+  #
+  # `skip: true` so the native button still draws itself pressed. The event is
+  # being observed, not intercepted.
+  defp connect(widget, true) do
+    :wxEvtHandler.connect(widget, :left_down, skip: true)
+    :wxEvtHandler.connect(widget, :left_up, skip: true)
+    :wxEvtHandler.connect(widget, :leave_window, skip: true)
+  end
+
+  defp connect(widget, false) do
+    :wxEvtHandler.connect(widget, :command_button_clicked)
   end
 
   defp align_flag(:center), do: wxALIGN_CENTER_HORIZONTAL()

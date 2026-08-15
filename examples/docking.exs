@@ -36,7 +36,15 @@ defmodule DockingDemo do
   ]
 
   def init(_args) do
-    %{angle: 0.0, saved: nil, status: "drag a caption bar to float a pane"}
+    %{
+      angle: 0.0,
+      saved: nil,
+      held: false,
+      # Every press and release, in order, so that "did the events arrive" is a
+      # question with an answer rather than an impression.
+      log: [],
+      status: "press and hold the button at the bottom of this pane"
+    }
   end
 
   # ── events ────────────────────────────────────────────────────────────────
@@ -81,6 +89,31 @@ defmodule DockingDemo do
     end
   end
 
+  # A held button reports going down and coming up rather than being clicked,
+  # which is what a jog needs: the machine moves for as long as the operator is
+  # holding the control, and stops when they let go — including when they let
+  # go by dragging off the button, or by the window losing the mouse entirely.
+  def handle_event({:ui_event, :hold_me, :press}, model) do
+    %{model | held: true, log: log(model, :press), status: "HELD — an axis would be moving now"}
+  end
+
+  def handle_event({:ui_event, :hold_me, :release}, %{held: true} = model) do
+    %{
+      model
+      | held: false,
+        log: log(model, :release),
+        status: "released after #{length(model.log)} event(s) — an axis would have stopped"
+    }
+  end
+
+  # A release with nothing held: the pointer crossing the button on its way
+  # somewhere else. Recorded, because it is the difference between "leaving
+  # stops a jog" and "leaving fires constantly".
+  def handle_event({:ui_event, :hold_me, :release}, model) do
+    %{model | log: log(model, :idle_release)}
+  end
+
+
   # Closing a pane is the one arrangement change the scene hears about, because
   # a closed pane usually has a menu item that should stop looking ticked.
   def handle_event({:dock_pane, pane_id, :closed}, model) do
@@ -88,6 +121,8 @@ defmodule DockingDemo do
   end
 
   def handle_event(_event, model), do: model
+
+  defp log(model, what), do: model.log ++ [{what, System.system_time(:millisecond)}]
 
   # Degrees: Cedar.Math.rotation_y/1 takes them, and a matrix built from a
   # radian's worth of degrees is a cube that appears not to be turning.
@@ -125,7 +160,12 @@ defmodule DockingDemo do
       {:ensure_widget, :restore, :button, :pendant, label: "Restore layout"},
       {:ensure_widget, :show_all, :button, :pendant, label: "Show all panes"},
       {:ensure_widget, :where, :button, :pendant, label: "Where is everything?"},
-      {:layout, :pendant, {:vbox, [], [:save, :restore, :show_all, :where]}},
+      {:ensure_widget, :hold_me, :button, :pendant, label: "Hold me", hold: true},
+      # Loud on purpose. If the label does not change while the button is down,
+      # macOS ate the event and no amount of squinting at the machine will say
+      # otherwise.
+      {:set, :hold_me, label: if(model.held, do: "▼ HOLDING ▼", else: "Hold me")},
+      {:layout, :pendant, {:vbox, [], [:save, :restore, :show_all, :where, :hold_me]}},
 
       {:ensure_dock_pane, :tree, :dock,
        caption: "Model tree", dock: :left, size: {220, 500}},
