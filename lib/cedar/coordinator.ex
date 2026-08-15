@@ -192,6 +192,16 @@ defmodule Cedar.Coordinator do
   defp ensure_intent?({:ensure_window, _, _}), do: true
   defp ensure_intent?({:ensure_panel, _, _, _}), do: true
   defp ensure_intent?({:ensure_widget, _, _, _, _}), do: true
+
+  # Containers, and therefore part of the ordering problem. A dock pane is a
+  # panel with a placement, and the widgets inside it name it as their parent —
+  # so a pane that sorts after its own contents means every one of those widgets
+  # is applied against a parent that does not exist yet, logged at debug, and
+  # dropped. Not retried, either: the next frame's diff sees an unchanged
+  # declaration and emits nothing, so the pane stays empty for the life of the
+  # program.
+  defp ensure_intent?({:ensure_dock_host, _, _, _}), do: true
+  defp ensure_intent?({:ensure_dock_pane, _, _, _}), do: true
   defp ensure_intent?({:ensure_gl_canvas, _, _, _}), do: true
   defp ensure_intent?(_), do: false
 
@@ -201,11 +211,17 @@ defmodule Cedar.Coordinator do
   defp intent_id({:ensure_window, id, _}), do: id
   defp intent_id({:ensure_panel, id, _, _}), do: id
   defp intent_id({:ensure_widget, id, _, _, _}), do: id
+  defp intent_id({:ensure_dock_host, id, _, _}), do: id
+  defp intent_id({:ensure_dock_pane, id, _, _}), do: id
   defp intent_id({:ensure_gl_canvas, id, _, _}), do: {:gl_canvas, id}
 
   defp intent_parent({:ensure_window, _, _}), do: nil
   defp intent_parent({:ensure_panel, _, parent_id, _}), do: parent_id
   defp intent_parent({:ensure_widget, _, _, parent_id, _}), do: parent_id
+  defp intent_parent({:ensure_dock_host, _, parent_id, _}), do: parent_id
+  # A pane's parent is its host, not the window: the host owns the wx panel the
+  # pane is created inside.
+  defp intent_parent({:ensure_dock_pane, _, host_id, _}), do: host_id
   defp intent_parent({:ensure_gl_canvas, _, parent_id, _}), do: parent_id
 
   defp topo_sort_ensures(intents) do
