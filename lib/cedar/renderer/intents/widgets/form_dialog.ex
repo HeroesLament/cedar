@@ -105,6 +105,20 @@ defmodule Cedar.Renderer.Intents.Widgets.FormDialog do
     :wxTextCtrl.new(panel, -1, value: value)
   end
 
+  # Echoing a password onto a screen on a factory floor is not acceptable, and
+  # a form with no password field invites exactly that.
+  defp create_field_widget(panel, :password, opts) do
+    value = Keyword.get(opts, :value, "")
+    :wxTextCtrl.new(panel, -1, value: value, style: wxTE_PASSWORD())
+  end
+
+  # Read-only. For values a dialog exists to show rather than collect — a
+  # pinned certificate fingerprint being the case this was added for, since
+  # comparing it out of band is the entire point of pinning.
+  defp create_field_widget(panel, :static, opts) do
+    :wxStaticText.new(panel, -1, Keyword.get(opts, :value, ""))
+  end
+
   defp create_field_widget(panel, :choice, opts) do
     choices = Keyword.get(opts, :choices, [])
     selected = Keyword.get(opts, :selected, 0)
@@ -139,6 +153,14 @@ defmodule Cedar.Renderer.Intents.Widgets.FormDialog do
 
   defp get_value(:text, widget) do
     :wxTextCtrl.getValue(widget) |> to_string()
+  end
+
+  defp get_value(:password, widget) do
+    :wxTextCtrl.getValue(widget) |> to_string()
+  end
+
+  defp get_value(:static, widget) do
+    :wxStaticText.getLabel(widget) |> to_string()
   end
 
   defp get_value(:choice, widget) do

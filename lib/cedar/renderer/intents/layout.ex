@@ -86,6 +86,11 @@ defmodule Cedar.Renderer.Intents.Layout do
   defp find_child(child_id, state) do
     Map.get(state.panels, child_id) ||
       Map.get(state.widgets, child_id) ||
+      # Notebooks live in their own map, and leaving them out here meant a
+      # notebook could never appear in a layout spec: it added itself to the
+      # parent sizer when created, then the first :layout cleared that sizer
+      # and could not find it to put back.
+      Map.get(state.notebooks, child_id) ||
       Map.get(state.widgets, {:gl_canvas, child_id})
   end
 

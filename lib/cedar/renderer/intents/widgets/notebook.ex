@@ -2,7 +2,7 @@ defmodule Cedar.Renderer.Intents.Widgets.Notebook do
   use WxEx
   require Logger
 
-  def apply({:ensure_widget, widget_id, :notebook, parent_id, _opts}, state) do
+  def apply({:ensure_widget, widget_id, :notebook, parent_id, opts}, state) do
     if Map.has_key?(state.notebooks, widget_id) do
       state
     else
@@ -19,6 +19,15 @@ defmodule Cedar.Renderer.Intents.Widgets.Notebook do
             parent,
             wxID_ANY()
           )
+
+        # A notebook used as a ribbon is a fixed-height strip, not something
+        # that grows with its busiest page. Without a minimum size it takes its
+        # best size from whichever tab has the most in it, so adding a longer
+        # list to one tab silently makes the whole bar taller.
+        case Keyword.get(opts, :size) do
+          {w, h} -> :wxWindow.setMinSize(notebook, {w, h})
+          _ -> :ok
+        end
 
         parent_sizer = Map.fetch!(state.sizers, parent_id)
 
