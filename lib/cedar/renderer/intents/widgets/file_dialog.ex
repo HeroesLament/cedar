@@ -1,4 +1,21 @@
 defmodule Cedar.Renderer.Intents.Widgets.FileDialog do
+  @moduledoc """
+  File and directory dialogs.
+
+  ## Paths come back as binaries
+
+  wx returns strings as charlists. `FormDialog` already runs every value it
+  collects through `to_string/1`; this module did not, so one dialog family
+  handed callers binaries and its neighbour handed them charlists.
+
+  That is not a difference an application can be expected to notice. A caller
+  pattern-matching `{:ok, path} when is_binary(path)` — which is the obvious
+  thing to write, having used the form dialog first — matched nothing, fell
+  through to its own catch-all, and did nothing at all. Silently, because
+  there is no clause to run when nothing matches.
+
+  So every path out of here is a binary now, and the two dialog families agree.
+  """
   use WxEx
   require Logger
 
@@ -36,9 +53,9 @@ defmodule Cedar.Renderer.Intents.Widgets.FileDialog do
       result =
         if modal_result == ok_id do
           if Keyword.get(opts, :multiple, false) do
-            {:ok, :wxFileDialog.getPaths(dialog)}
+            {:ok, Enum.map(:wxFileDialog.getPaths(dialog), &to_string/1)}
           else
-            {:ok, :wxFileDialog.getPath(dialog)}
+            {:ok, to_string(:wxFileDialog.getPath(dialog))}
           end
         else
           :cancel
@@ -84,7 +101,7 @@ defmodule Cedar.Renderer.Intents.Widgets.FileDialog do
 
       result =
         if modal_result == ok_id do
-          {:ok, :wxFileDialog.getPath(dialog)}
+          {:ok, to_string(:wxFileDialog.getPath(dialog))}
         else
           :cancel
         end
@@ -121,7 +138,7 @@ defmodule Cedar.Renderer.Intents.Widgets.FileDialog do
 
       result =
         if modal_result == ok_id do
-          {:ok, :wxDirDialog.getPath(dialog)}
+          {:ok, to_string(:wxDirDialog.getPath(dialog))}
         else
           :cancel
         end
