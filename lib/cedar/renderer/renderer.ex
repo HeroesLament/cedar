@@ -85,6 +85,9 @@ defmodule Cedar.Renderer do
        windows: %{},
        panels: %{},
        widgets: %{},
+       # Composite widgets' inner parts, keyed by widget id; the panel that
+       # stands for the composite lives in `widgets` like any other widget.
+       composites: %{},
        notebooks: %{},
        dock_hosts: %{},
        dock_panes: %{},

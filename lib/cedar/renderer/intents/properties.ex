@@ -7,13 +7,44 @@ defmodule Cedar.Renderer.Intents.Properties do
         state
 
       widget ->
-        Enum.each(props, fn {key, value} ->
-          set_property(widget, key, value)
-        end)
+        case Map.get(Map.get(state, :composites, %{}), widget_id) do
+          nil ->
+            Enum.each(props, fn {key, value} ->
+              set_property(widget, key, value)
+            end)
+
+          parts ->
+            Enum.each(props, fn {key, value} ->
+              set_composite_property(parts, key, value)
+            end)
+        end
 
         state
     end
   end
+
+  # Composite widgets (currently :colour_field) split their properties over
+  # inner parts; anything unrecognised lands on the panel, so :enabled and
+  # :visible keep their ordinary meaning.
+  defp set_composite_property(parts, :value, value) when is_binary(value) do
+    # changeValue, not setValue: it does not emit a change event, so a set
+    # that echoes what the person just typed cannot loop; the equality guard
+    # keeps the caret from jumping on the echo.
+    if :wxTextCtrl.getValue(parts.text) != String.to_charlist(value) do
+      :wxTextCtrl.changeValue(parts.text, value)
+    end
+  end
+
+  defp set_composite_property(parts, :colour, {r, g, b}) do
+    :wxColourPickerCtrl.setColour(parts.pick, {r, g, b})
+  end
+
+  defp set_composite_property(parts, :picker_visible, visible) when is_boolean(visible) do
+    :wxWindow.show(parts.pick, show: visible)
+    :wxWindow.layout(parts.panel)
+  end
+
+  defp set_composite_property(parts, key, value), do: set_property(parts.panel, key, value)
 
   defp set_property(widget, :text, value) when is_binary(value) do
     try do
@@ -68,6 +99,25 @@ defmodule Cedar.Renderer.Intents.Properties do
           _, _ -> :wxRadioBox.setSelection(widget, value)
         end
     end
+  end
+
+  # Show or hide a widget in place. Sizers skip hidden windows, so the row
+  # reflows around it - which is why this property relayouts the parent:
+  # a widget that vanished without a reflow leaves its hole behind.
+  defp set_property(widget, :visible, visible) when is_boolean(visible) do
+    :wxWindow.show(widget, show: visible)
+
+    case :wxWindow.getParent(widget) do
+      {:wx_ref, 0, _, _} -> :ok
+      parent -> :wxWindow.layout(parent)
+    end
+  end
+
+  # The swatch on a colour picker. Only ever set on :colour_picker widgets;
+  # wx dispatches by the ref's class, so a stray set on another type raises
+  # rather than silently no-opping, which is the better failure.
+  defp set_property(widget, :colour, {r, g, b}) do
+    :wxColourPickerCtrl.setColour(widget, {r, g, b})
   end
 
   defp set_property(widget, :items, items) when is_list(items) do
