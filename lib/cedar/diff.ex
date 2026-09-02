@@ -22,12 +22,62 @@ defmodule Cedar.Diff do
     destroy_intents = build_destroy_intents(removed_ids, old_index)
     create_intents = build_create_intents(added_ids, new_intents)
     update_intents = build_update_intents(common_ids, old_index, new_index)
+    initial_state_intents = build_initial_state_intents(added_ids, new_intents)
     action_intents = extract_action_intents(new_intents)
 
     # Split updates: widget/panel/window updates before property sets
     {structural_updates, property_updates} = Enum.split_with(update_intents, &structural_update?/1)
 
-    destroy_intents ++ create_intents ++ structural_updates ++ property_updates ++ action_intents
+    layout_intents =
+      layout_intents(
+        old_intents,
+        new_intents,
+        destroy_intents != [] or create_intents != []
+      )
+
+    destroy_intents ++
+      create_intents ++
+      structural_updates ++
+      property_updates ++ initial_state_intents ++ layout_intents ++ action_intents
+  end
+
+  # Diffable intents that are not creatable - property sets, tree items, grid
+  # cells - are dropped entirely on the render where their id first appears:
+  # not a create (only ensure_* are), not an update (nothing old to diff
+  # against). So a widget's initial {:set, id, visible: false} never ran, and
+  # because later renders found old == new, it never ran afterwards either.
+  # First appearances are applied once, after the creates they configure.
+  defp build_initial_state_intents(added_ids, new_intents) do
+    Enum.filter(new_intents, fn intent ->
+      diffable?(intent) and
+        not creatable?(intent) and
+        MapSet.member?(added_ids, intent_id(intent))
+    end)
+  end
+
+  ## ------------------------------------------------------------------
+  ## Layouts
+  ## ------------------------------------------------------------------
+
+  # Layouts are re-applied sparingly, not on every render. Applying one tears
+  # down and rebuilds the panel's nested sizers (`wxSizer.clear` deletes the
+  # old child sizers immediately), and a native size event that arrives while
+  # that teardown is in flight walks freed sizer items — a segfault inside
+  # wxSizer::Layout with no Elixir stack to explain it. A scene that re-renders
+  # on a timer made this a once-per-second race against the user's window drag.
+  #
+  # A layout must be re-applied in exactly two cases: its spec changed, or a
+  # widget was created or destroyed this diff — a re-created widget exists but
+  # sits in no sizer until the next layout puts it back.
+  defp layout_intents(old_intents, new_intents, structural_change?) do
+    layouts = Enum.filter(new_intents, &match?({:layout, _, _}, &1))
+
+    if structural_change? do
+      layouts
+    else
+      old_specs = Map.new(for {:layout, id, spec} <- old_intents, do: {id, spec})
+      Enum.filter(layouts, fn {:layout, id, spec} -> Map.get(old_specs, id) != spec end)
+    end
   end
 
   ## ------------------------------------------------------------------
@@ -102,6 +152,8 @@ defmodule Cedar.Diff do
   def diffable?({:grid_append_row, _, _}), do: false
   def diffable?({:add_menu_separator, _}), do: false
   def diffable?({:add_tool_separator, _}), do: false
+  # Layouts are neither indexed nor blanket re-applied: `layout_intents/3`
+  # decides when one runs. Still non-diffable so it stays out of the index.
   def diffable?({:layout, _, _}), do: false
 
   # Commands, not declarations: send them with `Cedar.Renderer.render/1` when
@@ -249,10 +301,6 @@ defmodule Cedar.Diff do
     if changed_props == [], do: [], else: [{:set, id, changed_props}]
   end
 
-  defp diff_intent({_id, {:layout, id, old_spec}, {:layout, id, new_spec}}) do
-    if old_spec == new_spec, do: [], else: [{:layout, id, new_spec}]
-  end
-
   defp diff_intent({_id, old_intent, new_intent}) do
     if old_intent == new_intent, do: [], else: [new_intent]
   end
@@ -280,6 +328,8 @@ defmodule Cedar.Diff do
 
   @spec extract_action_intents([intent()]) :: [intent()]
   defp extract_action_intents(intents) do
-    Enum.filter(intents, &(not diffable?(&1)))
+    Enum.filter(intents, fn intent ->
+      not diffable?(intent) and not match?({:layout, _, _}, intent)
+    end)
   end
 end
