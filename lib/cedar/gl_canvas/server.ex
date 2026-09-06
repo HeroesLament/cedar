@@ -170,6 +170,11 @@ defmodule Cedar.GLCanvas.Server do
   end
 
   def handle_info({:wx_mouse, type, x, y, button, wheel_delta, modifiers}, state) do
+    # A click gives the canvas keyboard focus, so key events follow the mouse
+    # the way they do in every drawing tool; wx does not do this for a
+    # GLCanvas on its own. The wx env was set in init, same process.
+    if type == :down, do: :wxWindow.setFocus(state.wx_canvas)
+
     event = %Event.Mouse{
       type: type,
       x: x,

@@ -12,7 +12,7 @@ defmodule Cedar.Visual.Host do
 
   use Cedar.GLCanvas
 
-  alias Cedar.GLCanvas.Event.Mouse
+  alias Cedar.GLCanvas.Event.{Key, Mouse}
   alias Cedar.Renderer.GL
   alias Cedar.Visual.Frame
 
@@ -96,6 +96,15 @@ defmodule Cedar.Visual.Host do
     }
 
     send(pid, {:ui_event, host.id, :mouse, payload})
+    {:noreply, host}
+  end
+
+  # Keys reach the scene the same way the mouse does, once the canvas has
+  # focus (a click gives it focus). `key` is the wx keycode, `char` the
+  # printable character or nil.
+  def handle_event(%Key{} = event, %{notify: pid} = host) when is_pid(pid) do
+    payload = %{type: event.type, key: event.key, char: event.char, modifiers: event.modifiers}
+    send(pid, {:ui_event, host.id, :key, payload})
     {:noreply, host}
   end
 
