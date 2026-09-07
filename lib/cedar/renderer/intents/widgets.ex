@@ -34,6 +34,7 @@ defmodule Cedar.Renderer.Intents.Widgets do
     DatePicker,
     ColourPicker,
     ColourField,
+    PickField,
     FilePicker,
     Calendar,
     HtmlWindow
@@ -68,6 +69,7 @@ defmodule Cedar.Renderer.Intents.Widgets do
   def apply({:ensure_widget, _, :date_picker, _, _} = intent, state), do: DatePicker.apply(intent, state)
   def apply({:ensure_widget, _, :colour_picker, _, _} = intent, state), do: ColourPicker.apply(intent, state)
   def apply({:ensure_widget, _, :colour_field, _, _} = intent, state), do: ColourField.apply(intent, state)
+  def apply({:ensure_widget, _, :pick_field, _, _} = intent, state), do: PickField.apply(intent, state)
   def apply({:ensure_widget, _, :file_picker, _, _} = intent, state), do: FilePicker.apply(intent, state)
   def apply({:ensure_widget, _, :calendar, _, _} = intent, state), do: Calendar.apply(intent, state)
   def apply({:ensure_widget, _, :html_window, _, _} = intent, state), do: HtmlWindow.apply(intent, state)

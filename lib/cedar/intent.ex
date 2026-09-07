@@ -21,6 +21,9 @@ defmodule Cedar.Intent do
           | :button
           | :checkbox
           | :text_ctrl
+          | :combo_box
+          | :colour_field
+          | :pick_field
 
   @type layout_spec ::
           {:vbox, opts(), [widget_id()]}

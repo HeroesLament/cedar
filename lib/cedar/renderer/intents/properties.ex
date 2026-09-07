@@ -23,9 +23,13 @@ defmodule Cedar.Renderer.Intents.Properties do
     end
   end
 
-  # Composite widgets (currently :colour_field) split their properties over
-  # inner parts; anything unrecognised lands on the panel, so :enabled and
-  # :visible keep their ordinary meaning.
+  # Composite widgets split their properties over inner parts; anything
+  # unrecognised lands on the panel, so :enabled and :visible keep their
+  # ordinary meaning. :colour_field parts are handled here; :pick_field
+  # (a lone combo, `%{combo: _}`) delegates to its own module.
+  defp set_composite_property(%{combo: _} = parts, key, value),
+    do: Cedar.Renderer.Intents.Widgets.PickField.set(parts, key, value)
+
   defp set_composite_property(parts, :value, value) when is_binary(value) do
     # changeValue, not setValue: it does not emit a change event, so a set
     # that echoes what the person just typed cannot loop; the equality guard
@@ -45,6 +49,9 @@ defmodule Cedar.Renderer.Intents.Properties do
   end
 
   defp set_composite_property(parts, key, value), do: set_property(parts.panel, key, value)
+
+  @doc false
+  def set_plain(widget, key, value), do: set_property(widget, key, value)
 
   defp set_property(widget, :text, value) when is_binary(value) do
     try do
